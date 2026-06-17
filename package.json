@@ -1,6 +1,6 @@
 {
   "name": "@gary-coding/speclane",
-  "version": "0.1.7",
+  "version": "0.1.0",
   "description": "SpecLane workflow skill and CLI for demand-driven AI delivery with OpenSpec bridge support.",
   "license": "MIT",
   "author": "Gary-Coding",

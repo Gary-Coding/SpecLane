@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.7
+## 0.1.0
 
 - 拆分 `/sl:*` 协议到 `references/commands/*`，删除旧单体协议入口，AI 按命令读取最小协议上下文，降低固定 token 消耗。
 - 增加 `route-check` JSON 预检入口，统一返回命令、阶段、允许状态和阻塞原因。
