@@ -4,13 +4,13 @@
   "description": "SpecLane workflow skill and CLI for demand-driven AI delivery with OpenSpec bridge support.",
   "license": "MIT",
   "author": "Gary-Coding",
-  "homepage": "https://github.com/Gary-Coding/speclane#readme",
+  "homepage": "https://github.com/Gary-Coding/SpecLane#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gary-Coding/speclane.git"
+    "url": "git+https://github.com/Gary-Coding/SpecLane.git"
   },
   "bugs": {
-    "url": "https://github.com/Gary-Coding/speclane/issues"
+    "url": "https://github.com/Gary-Coding/SpecLane/issues"
   },
   "engines": {
     "node": ">=18",
