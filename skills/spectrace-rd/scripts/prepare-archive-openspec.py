@@ -16,7 +16,7 @@ from common import (
     openspec_writeback_dir,
     collect_openspec_cli_context,
     read_json,
-    update_se_state,
+    update_st_state,
     workflow_source,
     workspace_root,
     write_managed_json,
@@ -172,7 +172,7 @@ def main() -> None:
     }
     write_managed_json(config, writeback_dir / "archive-input.json", payload)
     write_managed_text(config, writeback_dir / "merge-preview.md", build_markdown(payload))
-    update_se_state(
+    update_st_state(
         config,
         phase="archive_ready" if payload["archive_ready"] and merge_mode == "safe_merge" else "blocked",
         last_command="/st:archive-check",

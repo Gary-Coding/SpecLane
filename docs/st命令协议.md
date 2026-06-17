@@ -4,6 +4,14 @@
 
 用户只需要输入命令；AI 会根据当前 `workspace.yml`、状态机和 skill 协议调用底层脚本。
 
+English: `/st:*` commands are AI workflow instructions, not shell commands. The AI agent reads `workspace.yml`, validates the state machine, and calls SpecTrace scripts.
+
+## 语言 / Language
+
+- 默认使用用户最新消息的语言回复。
+- If the user writes in English, reply in English by default.
+- 命令名、文件名、JSON key 和 CLI 输出 key 保持原样。
+
 ## 命令顺序
 
 ### todo 模式

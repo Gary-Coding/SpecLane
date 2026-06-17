@@ -1,8 +1,12 @@
 # spectrace
 
+Structured AI Delivery Workflow
+
 ## 它是什么
 
 `spectrace` 是一个面向 AI 编码的工程交付工作流 skill。它把一次需求交付拆成规格、计划、实现、自查、审查、验证和归档，让 AI 不再零散写代码，而是按可追踪、可验证、可复盘的流程工作。
+
+English: SpecTrace turns requirements and specs into traceable AI-delivered software changes.
 
 它支持两种入口：
 
@@ -190,6 +194,7 @@ OpenSpec 模式额外产物：
 
 - [docs/st命令协议.md](docs/st命令协议.md)
 - [docs/中文使用手册.md](docs/中文使用手册.md)
+- [docs/English User Guide.md](docs/English%20User%20Guide.md)
 - [docs/项目架构与设计说明.md](docs/项目架构与设计说明.md)
 - [skills/spectrace-rd/SKILL.md](skills/spectrace-rd/SKILL.md)
 - [skills/spectrace-rd/references/workflow.md](skills/spectrace-rd/references/workflow.md)

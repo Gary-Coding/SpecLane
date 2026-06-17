@@ -11,7 +11,7 @@ from common import (
     openspec_change_dir,
     openspec_writeback_dir,
     read_json,
-    update_se_state,
+    update_st_state,
     workflow_source,
     workspace_root,
     load_workspace_config,
@@ -94,7 +94,7 @@ def main() -> None:
     }
     write_managed_json(config, archive_target / "spectrace" / "archive-result.json", payload)
     write_managed_text(config, archive_target / "spectrace" / "archive-result.md", build_markdown(payload))
-    update_se_state(
+    update_st_state(
         config,
         phase="archived",
         last_command="/st:archive",

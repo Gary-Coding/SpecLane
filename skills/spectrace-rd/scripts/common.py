@@ -536,10 +536,10 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
 
         active_change = read_json(active_openspec_change_path(root), {})
         bridge_context = read_json(root / ".spectrace" / "openspec-bridge-context.json", {})
-        se_state = read_json(root / ".spectrace" / "se-state.json", {})
+        st_state = read_json(root / ".spectrace" / "st-state.json", {})
         active_change_name = str(active_change.get("change_name", "")).strip()
         bridge_change_name = str(bridge_context.get("change_name", "")).strip()
-        state_change_name = str(se_state.get("current_change", "")).strip()
+        state_change_name = str(st_state.get("current_change", "")).strip()
         configured_change_name = str(openspec_raw.get("change_name", "")).strip()
 
         if changes_dir is None:
@@ -643,8 +643,8 @@ def active_openspec_change_path(root: Path | str) -> Path:
     return Path(str(root)).resolve() / ".spectrace" / "current-openspec-change.json"
 
 
-def se_state_path(config: dict[str, Any]) -> Path:
-    return artifacts_dir(config) / "se-state.json"
+def st_state_path(config: dict[str, Any]) -> Path:
+    return artifacts_dir(config) / "st-state.json"
 
 
 def todo_state_path(config: dict[str, Any]) -> Path:
@@ -652,7 +652,7 @@ def todo_state_path(config: dict[str, Any]) -> Path:
 
 
 def workflow_state_path(config: dict[str, Any]) -> Path:
-    return todo_state_path(config) if workflow_source(config) == "todo" else se_state_path(config)
+    return todo_state_path(config) if workflow_source(config) == "todo" else st_state_path(config)
 
 
 def sessions_dir(config: dict[str, Any]) -> Path:
@@ -792,7 +792,7 @@ def artifact_path(config: dict[str, Any], name: str) -> Path:
     return data_artifact_path(config, name)
 
 
-SE_PHASE_ALLOWED_NEXT: dict[str, list[str]] = {
+ST_PHASE_ALLOWED_NEXT: dict[str, list[str]] = {
     "draft": ["/st:propose"],
     "proposed": ["/st:bridge"],
     "bridged": ["/st:apply", "/st:plan"],
@@ -817,7 +817,7 @@ TODO_PHASE_ALLOWED_NEXT: dict[str, list[str]] = {
 }
 
 
-RUN_COMMAND_TO_SE_COMMAND: dict[str, str] = {
+RUN_COMMAND_TO_ST_COMMAND: dict[str, str] = {
     "route-st": "",
     "propose-openspec": "/st:propose",
     "bootstrap-openspec": "/st:bridge",
@@ -832,7 +832,7 @@ RUN_COMMAND_TO_SE_COMMAND: dict[str, str] = {
 }
 
 
-SE_COMMAND_TO_RUN_COMMAND: dict[str, str] = {
+ST_COMMAND_TO_RUN_COMMAND: dict[str, str] = {
     "/st:init": "init",
     "/st:propose": "propose-openspec",
     "/st:bridge": "bootstrap-openspec",
@@ -846,24 +846,24 @@ SE_COMMAND_TO_RUN_COMMAND: dict[str, str] = {
 }
 
 
-def read_se_state(config: dict[str, Any]) -> dict[str, Any]:
+def read_st_state(config: dict[str, Any]) -> dict[str, Any]:
     state = read_json(workflow_state_path(config), {})
     if not isinstance(state, dict):
         state = {}
     phase = str(state.get("phase", "") or "").strip() or "draft"
     allowed_next = state.get("allowed_next")
     if not isinstance(allowed_next, list):
-        allowed_map = TODO_PHASE_ALLOWED_NEXT if workflow_source(config) == "todo" else SE_PHASE_ALLOWED_NEXT
+        allowed_map = TODO_PHASE_ALLOWED_NEXT if workflow_source(config) == "todo" else ST_PHASE_ALLOWED_NEXT
         allowed_next = allowed_map.get(phase, [])
     state["phase"] = phase
     state["allowed_next"] = [str(item) for item in allowed_next]
     return state
 
 
-def write_se_state(config: dict[str, Any], state: dict[str, Any]) -> Path:
+def write_st_state(config: dict[str, Any], state: dict[str, Any]) -> Path:
     phase = str(state.get("phase", "") or "draft").strip()
     state["phase"] = phase
-    allowed_map = TODO_PHASE_ALLOWED_NEXT if workflow_source(config) == "todo" else SE_PHASE_ALLOWED_NEXT
+    allowed_map = TODO_PHASE_ALLOWED_NEXT if workflow_source(config) == "todo" else ST_PHASE_ALLOWED_NEXT
     state["allowed_next"] = list(allowed_map.get(phase, []))
     state["updated_at"] = now_iso()
     path = workflow_state_path(config)
@@ -871,14 +871,14 @@ def write_se_state(config: dict[str, Any], state: dict[str, Any]) -> Path:
     return path
 
 
-def update_se_state(
+def update_st_state(
     config: dict[str, Any],
     phase: str,
     last_command: str,
     artifacts: dict[str, Any] | None = None,
     blocked_reason: str = "",
 ) -> dict[str, Any]:
-    state = read_se_state(config)
+    state = read_st_state(config)
     state.update(
         {
             "phase": phase,
@@ -893,7 +893,7 @@ def update_se_state(
             existing_artifacts = {}
         existing_artifacts.update(artifacts)
         state["artifacts"] = existing_artifacts
-    write_se_state(config, state)
+    write_st_state(config, state)
     return state
 
 
@@ -962,7 +962,7 @@ def openspec_hash_drift(config: dict[str, Any], baseline: dict[str, Any]) -> lis
     return drifts
 
 
-def _se_state_artifact_exists(path_text: str) -> bool:
+def _st_state_artifact_exists(path_text: str) -> bool:
     return bool(path_text and Path(path_text).exists())
 
 
@@ -1082,11 +1082,11 @@ def validate_standard_session(config: dict[str, Any], require_notification: bool
     }
 
 
-def recover_se_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
+def recover_st_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
     if workflow_source(config) != "openspec":
         return {"phase": "", "allowed_next": []}
-    state = read_se_state(config)
-    if se_state_path(config).exists() and str(state.get("phase", "")).strip() != "draft":
+    state = read_st_state(config)
+    if st_state_path(config).exists() and str(state.get("phase", "")).strip() != "draft":
         return state
 
     artifacts = dict(state.get("artifacts", {}) if isinstance(state.get("artifacts"), dict) else {})
@@ -1170,13 +1170,13 @@ def recover_se_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
                 "artifacts": artifacts,
             }
         )
-        write_se_state(config, state)
-    return read_se_state(config)
+        write_st_state(config, state)
+    return read_st_state(config)
 
 
-def validate_se_state(config: dict[str, Any], run_command: str) -> dict[str, Any]:
+def validate_st_state(config: dict[str, Any], run_command: str) -> dict[str, Any]:
     if workflow_source(config) != "openspec":
-        se_command = RUN_COMMAND_TO_SE_COMMAND.get(run_command, "")
+        st_command = RUN_COMMAND_TO_ST_COMMAND.get(run_command, "")
         phase, status, session_meta = _status_phase_for_todo(config)
         allowed_next = TODO_PHASE_ALLOWED_NEXT.get(phase, [])
         errors: list[str] = []
@@ -1211,13 +1211,13 @@ def validate_se_state(config: dict[str, Any], run_command: str) -> dict[str, Any
             "errors": errors,
             "status_phase": status.get("phase", "") if isinstance(status, dict) else "",
         }
-    se_command = RUN_COMMAND_TO_SE_COMMAND.get(run_command, "")
-    if not se_command:
+    st_command = RUN_COMMAND_TO_ST_COMMAND.get(run_command, "")
+    if not st_command:
         return {"valid": True, "phase": "", "allowed_next": []}
-    if se_command == "/st:propose":
-        return {"valid": True, "phase": read_se_state(config).get("phase", "draft"), "allowed_next": ["/st:propose"]}
+    if st_command == "/st:propose":
+        return {"valid": True, "phase": read_st_state(config).get("phase", "draft"), "allowed_next": ["/st:propose"]}
 
-    state = recover_se_state_from_artifacts(config)
+    state = recover_st_state_from_artifacts(config)
     phase = str(state.get("phase", "") or "draft").strip()
     allowed_next = [str(item) for item in state.get("allowed_next", [])]
     artifacts = state.get("artifacts", {})
@@ -1225,7 +1225,7 @@ def validate_se_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         artifacts = {}
 
     errors: list[str] = []
-    if se_command == "/st:bridge":
+    if st_command == "/st:bridge":
         if not openspec_change_name(config):
             errors.append(
                 "缺少当前 OpenSpec change。请先执行 /st:propose <change-name>；"
@@ -1234,42 +1234,42 @@ def validate_se_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         if phase not in ("proposed", "bridged"):
             errors.append("当前状态不允许执行 /st:bridge，请先执行 /st:propose <change-name>，或在进入交付前停留在 bridged 阶段重新桥接。")
         for key in ("proposal", "design", "tasks"):
-            if not _se_state_artifact_exists(str(artifacts.get(key, ""))):
+            if not _st_state_artifact_exists(str(artifacts.get(key, ""))):
                 errors.append(f"缺少 OpenSpec 产物：{key}")
-    elif se_command == "/st:plan":
-        if phase not in ("bridged", "planned", "blocked") and se_command not in allowed_next:
+    elif st_command == "/st:plan":
+        if phase not in ("bridged", "planned", "blocked") and st_command not in allowed_next:
             errors.append("当前状态不允许重新计划，请先完成 /st:bridge，或继续当前活跃交付会话。")
         if phase in ("implementing", "self_checked", "reviewed", "verified"):
             errors.append("当前已有活跃 session 正在交付中，不能重新执行 /st:plan。请继续当前 /st:apply、/st:review 或 /st:verify。")
         if phase == "proposed":
             errors.append("/st:propose 后不能直接进入交付，必须先执行 /st:bridge。")
-        if not _se_state_artifact_exists(str(artifacts.get("todo", ""))):
+        if not _st_state_artifact_exists(str(artifacts.get("todo", ""))):
             errors.append("缺少桥接 todo.md，请先执行 /st:bridge。")
         bridged_hash = str(artifacts.get("tasks_sha256", "")).strip()
         current_hash = openspec_tasks_hash(config)
         if bridged_hash and current_hash and bridged_hash != current_hash:
             errors.append("OpenSpec tasks.md 已变化，请重新执行 /st:bridge 生成待审核 todo.md。")
-    elif se_command == "/st:apply":
-        if phase not in ("bridged", "planned", "implementing", "reviewed", "blocked") and se_command not in allowed_next:
+    elif st_command == "/st:apply":
+        if phase not in ("bridged", "planned", "implementing", "reviewed", "blocked") and st_command not in allowed_next:
             errors.append("当前状态不允许进入交付，请先完成 /st:bridge 并人工审核 todo.md。")
         if phase == "proposed":
             errors.append("/st:propose 后不能直接进入交付，必须先执行 /st:bridge。")
-        if not _se_state_artifact_exists(str(artifacts.get("todo", ""))):
+        if not _st_state_artifact_exists(str(artifacts.get("todo", ""))):
             errors.append("缺少桥接 todo.md，请先执行 /st:bridge。")
         bridged_hash = str(artifacts.get("tasks_sha256", "")).strip()
         current_hash = openspec_tasks_hash(config)
         if bridged_hash and current_hash and bridged_hash != current_hash:
             errors.append("OpenSpec tasks.md 已变化，请重新执行 /st:bridge 并审核新的 todo.md。")
-    elif se_command == "/st:review":
+    elif st_command == "/st:review":
         if phase not in ("self_checked", "reviewed", "blocked"):
             errors.append("当前状态不允许 review，请先完成实现和自查。")
-    elif se_command == "/st:verify":
+    elif st_command == "/st:verify":
         if phase not in ("reviewed", "verified", "blocked"):
             errors.append("当前状态不允许 verify，请先完成 review。")
-    elif se_command == "/st:archive-check":
+    elif st_command == "/st:archive-check":
         if phase != "verified":
             errors.append("当前状态不允许 archive-check，请先完成 /st:verify。")
-    elif se_command == "/st:archive":
+    elif st_command == "/st:archive":
         if phase != "archive_ready":
             errors.append("当前状态不允许 archive，请先完成 /st:archive-check 且结果为 safe_merge。")
 
@@ -1278,12 +1278,12 @@ def validate_se_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         "phase": phase,
         "allowed_next": allowed_next,
         "errors": errors,
-        "state_path": str(se_state_path(config)),
+        "state_path": str(st_state_path(config)),
     }
 
 
-def require_se_state(config: dict[str, Any], run_command: str) -> None:
-    result = validate_se_state(config, run_command)
+def require_st_state(config: dict[str, Any], run_command: str) -> None:
+    result = validate_st_state(config, run_command)
     if result.get("valid"):
         return
     errors = result.get("errors", [])
@@ -1291,18 +1291,18 @@ def require_se_state(config: dict[str, Any], run_command: str) -> None:
     raise SystemExit(message)
 
 
-def parse_se_command(text: str) -> dict[str, Any]:
+def parse_st_command(text: str) -> dict[str, Any]:
     stripped = str(text).strip()
     match = re.match(r"^(/st:[a-z][a-z-]*)(?:\s+([A-Za-z0-9][A-Za-z0-9-]*))?(?:\s|$)", stripped)
     if not match:
         raise ValueError("未识别到 /st:* 命令。")
-    se_command = match.group(1)
+    st_command = match.group(1)
     argument = match.group(2) or ""
-    if se_command not in SE_COMMAND_TO_RUN_COMMAND:
-        raise ValueError(f"不支持的 /st:* 命令：{se_command}")
+    if st_command not in ST_COMMAND_TO_RUN_COMMAND:
+        raise ValueError(f"不支持的 /st:* 命令：{st_command}")
     return {
-        "se_command": se_command,
-        "run_command": SE_COMMAND_TO_RUN_COMMAND[se_command],
+        "st_command": st_command,
+        "run_command": ST_COMMAND_TO_RUN_COMMAND[st_command],
         "argument": argument,
     }
 
@@ -3059,7 +3059,7 @@ def feishu_sign(secret: str, timestamp: str) -> str:
 
 
 def _workflow_notification_title(session_id: str, overall_result: str) -> str:
-    return "spectrace-rd任务通知"
+    return "SpecTrace RD workflow notification"
 
 
 def _workflow_notification_status_text(status: dict[str, Any], overall_result: str) -> str:

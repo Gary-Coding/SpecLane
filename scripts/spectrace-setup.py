@@ -426,7 +426,7 @@ def print_summary(workspace: Path, demand_name: str, source: str, mode: str) -> 
         print("推荐使用流程：")
         print(f"/st:propose <change-name>")
         print("请根据当前 workspace 的 demand_file 生成或完善 OpenSpec change。")
-        print("不要改代码。过程中请使用中文。")
+        print("不要改代码。回复语言默认跟随用户输入，可显式要求中文或 English。")
         print("")
         print("/st:bridge")
         print("把 OpenSpec tasks.md 桥接为待审核 todo.md，不要改代码。")
@@ -439,7 +439,7 @@ def print_summary(workspace: Path, demand_name: str, source: str, mode: str) -> 
         print("先编辑 todo_file，确认任务和验收标准。")
         print("")
         print("/st:apply")
-        print("请根据当前 workspace 的 todo_file 推进交付工作流。过程中请使用中文。")
+        print("请根据当前 workspace 的 todo_file 推进交付工作流。回复语言默认跟随用户输入，可显式要求中文或 English。")
     print("")
     print("诊断命令：spectrace doctor --workspace <workspace>")
 

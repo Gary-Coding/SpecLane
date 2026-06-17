@@ -17,19 +17,19 @@ from common import (
     ensure_status,
     load_workspace_config,
     now_iso,
-    parse_se_command,
+    parse_st_command,
     planned_codebases,
     planned_codebase,
     read_json,
-    read_se_state,
+    read_st_state,
     release_workflow_lock,
-    require_se_state,
+    require_st_state,
     report_artifact_path,
-    recover_se_state_from_artifacts,
+    recover_st_state_from_artifacts,
     todo_path,
-    update_se_state,
+    update_st_state,
     validate_standard_session,
-    validate_se_state,
+    validate_st_state,
     workflow_source,
     write_managed_json,
     workspace_root,
@@ -39,7 +39,7 @@ from common import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-SE_ROUTE_REPLY_CONSTRAINTS: dict[str, dict[str, str]] = {
+ST_ROUTE_REPLY_CONSTRAINTS: dict[str, dict[str, str]] = {
     "/st:propose": {
         "phase": "proposed",
         "allowed_next": "/st:bridge",
@@ -106,7 +106,7 @@ def update_status_for_implement(workspace: Path | None, current_task: str, next_
 
 def command_status(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
-    recover_se_state_from_artifacts(config)
+    recover_st_state_from_artifacts(config)
     try:
         status, _ = load_status(workspace)
     except FileNotFoundError:
@@ -131,10 +131,10 @@ def command_status(workspace: Path | None) -> None:
             "notification_message",
             ):
             print(f"{key}={status.get(key, '')}")
-    state = read_se_state(config)
+    state = read_st_state(config)
     if state:
-        print(f"se_phase={state.get('phase', '')}")
-        print(f"se_allowed_next={','.join(str(item) for item in state.get('allowed_next', []))}")
+        print(f"st_phase={state.get('phase', '')}")
+        print(f"st_allowed_next={','.join(str(item) for item in state.get('allowed_next', []))}")
     if workflow_source(config) == "todo":
         standard = validate_standard_session(config, require_notification=False)
         print(f"standard_session={str(bool(standard.get('valid'))).lower()}")
@@ -158,7 +158,7 @@ def command_validate_state(workspace: Path | None, command: str | None) -> None:
     if not command:
         raise SystemExit("缺少要校验的命令，例如 validate-state plan。")
     config = load_workspace_config(workspace)
-    result = validate_se_state(config, command)
+    result = validate_st_state(config, command)
     print(f"valid={str(bool(result.get('valid'))).lower()}")
     print(f"phase={result.get('phase', '')}")
     print(f"allowed_next={','.join(str(item) for item in result.get('allowed_next', []))}")
@@ -168,59 +168,59 @@ def command_validate_state(workspace: Path | None, command: str | None) -> None:
         raise SystemExit(1)
 
 
-def command_route_se(workspace: Path | None, command_text: str | None, timeout_seconds: int, force: bool = False, output_json: bool = False) -> None:
+def command_route_st(workspace: Path | None, command_text: str | None, timeout_seconds: int, force: bool = False, output_json: bool = False) -> None:
     if not command_text:
         raise SystemExit("缺少 /st:* 命令文本。")
-    parsed = parse_se_command(command_text)
-    se_command = parsed["se_command"]
+    parsed = parse_st_command(command_text)
+    st_command = parsed["st_command"]
     run_command = parsed["run_command"]
     argument = str(parsed.get("argument", "")).strip()
-    print(f"se_command={se_command}")
+    print(f"st_command={st_command}")
     print(f"run_command={run_command}")
     if argument:
         print(f"argument={argument}")
-    if se_command == "/st:init":
+    if st_command == "/st:init":
         command_init(workspace)
-        print_route_reply_constraint(se_command)
+        print_route_reply_constraint(st_command)
         return
     config = load_workspace_config(workspace)
     lock_path = None
-    if se_command != "/st:status":
+    if st_command != "/st:status":
         try:
-            lock_path = acquire_workflow_lock(config, se_command)
+            lock_path = acquire_workflow_lock(config, st_command)
             print(f"workflow_lock={lock_path}")
         except RuntimeError as error:
             if output_json:
-                print(json.dumps({"se_command": se_command, "run_command": run_command, "result": "blocked", "error": str(error)}, ensure_ascii=False, indent=2))
+                print(json.dumps({"st_command": st_command, "run_command": run_command, "result": "blocked", "error": str(error)}, ensure_ascii=False, indent=2))
             raise SystemExit(str(error))
     try:
-        if se_command == "/st:propose":
+        if st_command == "/st:propose":
             command_propose_openspec(workspace, argument or None)
-        elif se_command == "/st:bridge":
-            command_bootstrap_openspec(workspace, explicit_se_bridge=True)
-        elif se_command == "/st:plan":
+        elif st_command == "/st:bridge":
+            command_bootstrap_openspec(workspace, explicit_st_bridge=True)
+        elif st_command == "/st:plan":
             command_plan(workspace)
-        elif se_command == "/st:apply":
+        elif st_command == "/st:apply":
             command_apply(workspace, timeout_seconds)
-        elif se_command == "/st:review":
+        elif st_command == "/st:review":
             command_review(workspace)
-        elif se_command == "/st:verify":
+        elif st_command == "/st:verify":
             command_verify(workspace, timeout_seconds, force)
-        elif se_command == "/st:archive-check":
+        elif st_command == "/st:archive-check":
             command_prepare_archive_openspec(workspace)
-        elif se_command == "/st:archive":
+        elif st_command == "/st:archive":
             command_archive_openspec(workspace)
-        elif se_command == "/st:status":
+        elif st_command == "/st:status":
             command_status(workspace)
         else:
-            raise SystemExit(f"不支持的 /st:* 命令：{se_command}")
+            raise SystemExit(f"不支持的 /st:* 命令：{st_command}")
     finally:
         release_workflow_lock(lock_path)
-    print_route_reply_constraint(se_command)
+    print_route_reply_constraint(st_command)
     if output_json:
-        state = validate_se_state(load_workspace_config(workspace), run_command)
+        state = validate_st_state(load_workspace_config(workspace), run_command)
         payload = {
-            "se_command": se_command,
+            "st_command": st_command,
             "run_command": run_command,
             "argument": argument,
             "result": "ok",
@@ -240,12 +240,12 @@ def command_route_check(workspace: Path | None, command_text: str | None) -> Non
     if not command_text:
         raise SystemExit("缺少 /st:* 命令文本。")
     config = load_workspace_config(workspace)
-    parsed = parse_se_command(command_text)
-    se_command = parsed["se_command"]
+    parsed = parse_st_command(command_text)
+    st_command = parsed["st_command"]
     run_command = parsed["run_command"]
-    result = validate_se_state(config, run_command)
+    result = validate_st_state(config, run_command)
     payload = {
-        "se_command": se_command,
+        "st_command": st_command,
         "run_command": run_command,
         "argument": str(parsed.get("argument", "")).strip(),
         "workflow_source": workflow_source(config),
@@ -265,14 +265,14 @@ def command_route_check(workspace: Path | None, command_text: str | None) -> Non
         raise SystemExit(1)
 
 
-def print_route_reply_constraint(se_command: str) -> None:
-    constraint = SE_ROUTE_REPLY_CONSTRAINTS.get(se_command)
+def print_route_reply_constraint(st_command: str) -> None:
+    constraint = ST_ROUTE_REPLY_CONSTRAINTS.get(st_command)
     if not constraint:
         return
-    print("se_reply_constraint_begin")
+    print("st_reply_constraint_begin")
     for key in ("phase", "allowed_next", "forbidden_next", "final_reply_must"):
         print(f"{key}={constraint[key]}")
-    print("se_reply_constraint_end")
+    print("st_reply_constraint_end")
 
 
 def command_next(workspace: Path | None, timeout_seconds: int) -> None:
@@ -304,13 +304,13 @@ def command_init(workspace: Path | None) -> None:
     run_python("init-workspace.py", args)
 
 
-def command_bootstrap_openspec(workspace: Path | None, *, explicit_se_bridge: bool = False) -> None:
-    if not explicit_se_bridge:
+def command_bootstrap_openspec(workspace: Path | None, *, explicit_st_bridge: bool = False) -> None:
+    if not explicit_st_bridge:
         raise SystemExit(
             "拒绝执行桥接：bootstrap-openspec 只能由用户显式 /st:bridge 触发。"
             "请通过 route-st --command-text '/st:bridge' 或带 --explicit-st-bridge 的受控入口执行。"
         )
-    require_se_state(load_workspace_config(workspace), "bootstrap-openspec")
+    require_st_state(load_workspace_config(workspace), "bootstrap-openspec")
     args = ["--explicit-st-bridge"]
     if workspace:
         args.extend(["--workspace", str(workspace)])
@@ -323,7 +323,7 @@ def command_propose_openspec(workspace: Path | None, change_name: str | None = N
         args.append(change_name)
     run_python("propose-openspec.py", args)
     config = load_workspace_config(workspace)
-    state = read_se_state(config)
+    state = read_st_state(config)
     phase = str(state.get("phase", "")).strip()
     if phase != "proposed":
         raise SystemExit(
@@ -338,20 +338,20 @@ def command_writeback_openspec(workspace: Path | None) -> None:
 
 
 def command_prepare_archive_openspec(workspace: Path | None) -> None:
-    require_se_state(load_workspace_config(workspace), "prepare-archive-openspec")
+    require_st_state(load_workspace_config(workspace), "prepare-archive-openspec")
     args = ["--workspace", str(workspace)] if workspace else []
     run_python("prepare-archive-openspec.py", args)
 
 
 def command_archive_openspec(workspace: Path | None) -> None:
-    require_se_state(load_workspace_config(workspace), "archive-openspec")
+    require_st_state(load_workspace_config(workspace), "archive-openspec")
     args = ["--workspace", str(workspace)] if workspace else []
     run_python("archive-openspec.py", args)
 
 
 def command_plan(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
-    require_se_state(config, "plan")
+    require_st_state(config, "plan")
     try:
         active = ensure_plan_can_run(config)
     except RuntimeError as error:
@@ -379,7 +379,7 @@ def command_plan(workspace: Path | None) -> None:
     command_discover(workspace)
     args = ["--workspace", str(workspace)] if workspace else []
     run_python("generate-smart-plan.py", args)
-    update_se_state(
+    update_st_state(
         config,
         phase="planned",
         last_command="/st:plan",
@@ -398,7 +398,7 @@ def command_discover(workspace: Path | None) -> None:
 
 def command_start_implement(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
-    require_se_state(config, "start-implement")
+    require_st_state(config, "start-implement")
     session_meta = current_session_meta(config)
     codebases = planned_codebases(config, session_meta)
     codebase = planned_codebase(config, session_meta)
@@ -413,15 +413,15 @@ def command_start_implement(workspace: Path | None) -> None:
         phase="implement",
         progress=45,
     )
-    update_se_state(config, phase="implementing", last_command="/st:apply")
+    update_st_state(config, phase="implementing", last_command="/st:apply")
 
 
 def command_finish_implement(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
-    require_se_state(config, "finish-implement")
+    require_st_state(config, "finish-implement")
     args = ["--workspace", str(workspace)] if workspace else []
     run_python("generate-self-check.py", args)
-    update_se_state(
+    update_st_state(
         config,
         phase="self_checked",
         last_command="/st:apply",
@@ -464,10 +464,10 @@ def command_finish_implement(workspace: Path | None) -> None:
 
 def command_review(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
-    require_se_state(config, "review")
+    require_st_state(config, "review")
     args = ["--workspace", str(workspace)] if workspace else []
     run_python("generate-review-report.py", args)
-    update_se_state(
+    update_st_state(
         config,
         phase="reviewed",
         last_command="/st:review",
@@ -482,7 +482,7 @@ def command_review(workspace: Path | None) -> None:
 
 def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = False) -> None:
     config = load_workspace_config(workspace)
-    require_se_state(config, "verify")
+    require_st_state(config, "verify")
     args = ["--timeout-seconds", str(timeout_seconds)]
     if force:
         args.append("--force")
@@ -496,7 +496,7 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
     next_phase = "blocked"
     if result_text == "通过" and status_phase == "done":
         next_phase = "verified" if workflow_source(config) == "openspec" else "done"
-    update_se_state(
+    update_st_state(
         config,
         phase=next_phase,
         last_command="/st:verify",
@@ -513,7 +513,7 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
 
 def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
     config = load_workspace_config(workspace)
-    require_se_state(config, "apply")
+    require_st_state(config, "apply")
     needs_plan = current_session_is_stale(config)
     if not needs_plan:
         try:
@@ -550,7 +550,7 @@ def main() -> None:
     workspace = Path(args.workspace).expanduser() if args.workspace else None
 
     if args.command == "route-st":
-        command_route_se(workspace, args.command_text or args.change_name, args.timeout_seconds, args.force, args.json)
+        command_route_st(workspace, args.command_text or args.change_name, args.timeout_seconds, args.force, args.json)
     elif args.command == "route-check":
         command_route_check(workspace, args.command_text or args.change_name)
     elif args.command == "init":
@@ -558,7 +558,7 @@ def main() -> None:
     elif args.command == "propose-openspec":
         command_propose_openspec(workspace, args.change_name)
     elif args.command == "bootstrap-openspec":
-        command_bootstrap_openspec(workspace, explicit_se_bridge=args.explicit_se_bridge)
+        command_bootstrap_openspec(workspace, explicit_st_bridge=args.explicit_st_bridge)
     elif args.command == "writeback-openspec":
         command_writeback_openspec(workspace)
     elif args.command == "prepare-archive-openspec":

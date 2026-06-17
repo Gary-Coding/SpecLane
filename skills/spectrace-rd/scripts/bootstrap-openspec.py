@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import ensure_workflow_inputs, load_workspace_config, openspec_tasks_hash, todo_path, update_se_state, workflow_source, workspace_root
+from common import ensure_workflow_inputs, load_workspace_config, openspec_tasks_hash, todo_path, update_st_state, workflow_source, workspace_root
 
 
 def main() -> None:
@@ -23,7 +23,7 @@ def main() -> None:
             "如果当前命令是 /st:propose、/st:init、/st:plan 或 /st:apply，必须停止，不能生成 todo.md。"
         )
     result = ensure_workflow_inputs(config, allow_bridge_write=True)
-    update_se_state(
+    update_st_state(
         config,
         phase="bridged",
         last_command="/st:bridge",

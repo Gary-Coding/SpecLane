@@ -15,7 +15,7 @@ from common import (
     run_openspec_cli,
     select_openspec_change,
     summarize_markdown_file,
-    update_se_state,
+    update_st_state,
     validate_openspec_change_name,
     workflow_source,
     workspace_root,
@@ -149,7 +149,7 @@ def main() -> None:
             ]
         ),
     )
-    update_se_state(
+    update_st_state(
         config,
         phase="proposed",
         last_command="/st:propose",

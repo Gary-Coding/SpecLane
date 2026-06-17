@@ -2,18 +2,24 @@
 
 `/st:*` 是 SpecTrace RD 的 AI 阶段命令，不是 shell 命令，也不是 OpenSpec `/opsx:*`。
 
+## 语言 / Language
+
+- 默认使用用户最新消息的语言回复。
+- 用户明确要求中文或 English 时，按用户指定语言回复。
+- 命令名、文件名、JSON key 和 CLI 输出 key 不翻译。
+
 ## 必做
 
 1. 读取当前工作区 `workspace.yml`。
 2. 通过 `python3 scripts/run-workflow.py route-check --command-text "<用户命令>"` 做状态预检。
 3. 预检通过后，再执行 `python3 scripts/run-workflow.py route-st --command-text "<用户命令>"`。
-4. 遵守脚本输出的 `final_reply_must` 或 `se_reply_constraint_begin/end`。
+4. 遵守脚本输出的 `final_reply_must` 或 `st_reply_constraint_begin/end`。
 5. 最终回复只汇报结果、阻塞点、允许的下一步和关键相对路径。
 
 ## 硬约束
 
 - 禁止编辑 `workspace.yml`。
-- 禁止手写 `.spectrace/**/status.json`、`se-state.json`、`current-session.json`、`plan.json`、`review.json`、`verify.json`、`notification.json`。
+- 禁止手写 `.spectrace/**/status.json`、`st-state.json`、`current-session.json`、`plan.json`、`review.json`、`verify.json`、`notification.json`。
 - 标准状态、报告、通知只能由脚本生成。
 - 一次只执行用户当前明确请求的一个 `/st:*` 命令。
 - `/st:propose` 之后只能提示 `/st:bridge`。

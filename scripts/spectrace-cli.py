@@ -388,7 +388,7 @@ def read_workspace_yaml(path: Path) -> dict[str, object]:
         return loaded
 
     common_path = SKILL_DIR / "scripts" / "common.py"
-    spec = importlib.util.spec_from_file_location("se_common_for_cli", common_path)
+    spec = importlib.util.spec_from_file_location("st_common_for_cli", common_path)
     if spec is None or spec.loader is None:
         raise ValueError(f"无法加载 YAML 解析器：{common_path}")
     module = importlib.util.module_from_spec(spec)
