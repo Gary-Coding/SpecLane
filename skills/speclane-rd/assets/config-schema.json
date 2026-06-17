@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "speclane workspace.yml",
+  "type": "object",
+  "required": ["version", "mode", "workflow_source", "todo_file", "reference_files", "code_path", "output_dir"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["manual", "auto"]
+    },
+    "workflow_source": {
+      "type": "string",
+      "enum": ["todo", "openspec"],
+      "default": "todo"
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"]
+      }
+    },
+    "demand_file": {
+      "type": "string"
+    },
+    "todo_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reference_files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "code_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "output_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verify_commands": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "openspec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changes_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "change_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tasks_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proposal_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "design_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specs_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "writeback_dir": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

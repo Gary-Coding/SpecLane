@@ -8,4 +8,4 @@ node_modules/
 npm-debug.log*
 workspace.yml
 demands/
-.spectrace/
+.speclane/

@@ -1,12 +1,12 @@
-# spectrace
+# speclane
 
 Structured AI Delivery Workflow
 
 ## 它是什么
 
-`spectrace` 是一个面向 AI 编码的工程交付工作流 skill。它把一次需求交付拆成规格、计划、实现、自查、审查、验证和归档，让 AI 不再零散写代码，而是按可追踪、可验证、可复盘的流程工作。
+`speclane` 是一个面向 AI 编码的工程交付工作流 skill。它把一次需求交付拆成规格、计划、实现、自查、审查、验证和归档，让 AI 不再零散写代码，而是按可追踪、可验证、可复盘的流程工作。
 
-English: SpecTrace turns requirements and specs into traceable AI-delivered software changes.
+English: SpecLane turns requirements and specs into traceable AI-delivered software changes.
 
 它支持两种入口：
 
@@ -23,9 +23,9 @@ English: SpecTrace turns requirements and specs into traceable AI-delivered soft
 ## 三步开始
 
 ```bash
-npm install -g @gary-coding/spectrace@latest
-spectrace init
-spectrace sync --target both
+npm install -g @gary-coding/speclane@latest
+speclane init
+speclane sync --target both
 ```
 
 然后在 AI 中发送工作流命令。
@@ -33,19 +33,19 @@ spectrace sync --target both
 OpenSpec 模式：
 
 ```text
-/st:propose add-phone-filter
-/st:bridge
+/sl:propose add-phone-filter
+/sl:bridge
 # 人工审核 todo.md 后
-/st:apply
+/sl:apply
 ```
 
 todo 模式：
 
 ```text
-/st:apply
+/sl:apply
 ```
 
-更多命令见 [docs/st命令协议.md](docs/st命令协议.md)。
+更多命令见 [docs/sl命令协议.md](docs/sl命令协议.md)。
 
 ## 一个最小示例
 
@@ -54,7 +54,7 @@ todo 模式：
 1. 初始化工作区：
 
 ```bash
-spectrace init
+speclane init
 ```
 
 2. 把需求写入初始化生成的需求文件，或维护好 `todo.md`。
@@ -62,19 +62,19 @@ spectrace init
 3. 使用 OpenSpec 模式时，在 AI 中输入：
 
 ```text
-/st:propose add-user-phone-filter
+/sl:propose add-user-phone-filter
 ```
 
 生成规格后继续：
 
 ```text
-/st:bridge
+/sl:bridge
 ```
 
 审核 `todo.md` 后：
 
 ```text
-/st:apply
+/sl:apply
 ```
 
 AI 会按当前工作区配置推进计划、实现、自查、审查、验证，并在 OpenSpec 模式下回写执行摘要和归档检查结果。
@@ -147,12 +147,12 @@ openspec:
   changes_dir: ../openspec/changes
 ```
 
-OpenSpec change 名称不从 `demand_name` 推导。请在 `/st:propose <change-name>` 后显式指定，例如 `/st:propose demand-addition-rate`。后续 `/st:bridge`、`/st:apply` 会使用 propose 阶段记录的当前 change。
+OpenSpec change 名称不从 `demand_name` 推导。请在 `/sl:propose <change-name>` 后显式指定，例如 `/sl:propose demand-addition-rate`。后续 `/sl:bridge`、`/sl:apply` 会使用 propose 阶段记录的当前 change。
 
 skill 自身配置位于：
 
 ```text
-~/.spectrace/skill-config.yml
+~/.speclane/skill-config.yml
 ```
 
 如果该文件不存在，首次初始化时会自动生成默认配置并暂停流程，等待补全。
@@ -162,13 +162,13 @@ skill 自身配置位于：
 给机器读取的会话产物：
 
 ```text
-<workspace>/.spectrace/current-session.json
-<workspace>/.spectrace/sessions/<session_id>/discovery.json
-<workspace>/.spectrace/sessions/<session_id>/plan.json
-<workspace>/.spectrace/sessions/<session_id>/self-check.json
-<workspace>/.spectrace/sessions/<session_id>/review.json
-<workspace>/.spectrace/sessions/<session_id>/verify.json
-<workspace>/.spectrace/sessions/<session_id>/status.json
+<workspace>/.speclane/current-session.json
+<workspace>/.speclane/sessions/<session_id>/discovery.json
+<workspace>/.speclane/sessions/<session_id>/plan.json
+<workspace>/.speclane/sessions/<session_id>/self-check.json
+<workspace>/.speclane/sessions/<session_id>/review.json
+<workspace>/.speclane/sessions/<session_id>/verify.json
+<workspace>/.speclane/sessions/<session_id>/status.json
 ```
 
 给人查看的报告：
@@ -184,21 +184,21 @@ skill 自身配置位于：
 OpenSpec 模式额外产物：
 
 ```text
-<workspace>/.spectrace/openspec-bridge-context.json
-<change_dir>/spectrace/execution-summary.json
-<change_dir>/spectrace/archive-input.json
-<change_dir>/spectrace/archive-result.json
+<workspace>/.speclane/openspec-bridge-context.json
+<change_dir>/speclane/execution-summary.json
+<change_dir>/speclane/archive-input.json
+<change_dir>/speclane/archive-result.json
 ```
 
 ## 文档入口
 
-- [docs/st命令协议.md](docs/st命令协议.md)
+- [docs/sl命令协议.md](docs/sl命令协议.md)
 - [docs/中文使用手册.md](docs/中文使用手册.md)
 - [docs/English User Guide.md](docs/English%20User%20Guide.md)
 - [docs/项目架构与设计说明.md](docs/项目架构与设计说明.md)
-- [skills/spectrace-rd/SKILL.md](skills/spectrace-rd/SKILL.md)
-- [skills/spectrace-rd/references/workflow.md](skills/spectrace-rd/references/workflow.md)
-- [skills/spectrace-rd/references/contracts.md](skills/spectrace-rd/references/contracts.md)
+- [skills/speclane-rd/SKILL.md](skills/speclane-rd/SKILL.md)
+- [skills/speclane-rd/references/workflow.md](skills/speclane-rd/references/workflow.md)
+- [skills/speclane-rd/references/contracts.md](skills/speclane-rd/references/contracts.md)
 
 ## 许可证
 

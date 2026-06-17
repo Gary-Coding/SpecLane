@@ -1,16 +1,16 @@
-# SpecTrace User Guide
+# SpecLane User Guide
 
-SpecTrace is a structured AI delivery workflow. It helps an AI coding agent turn requirements and specs into traceable software changes with planning, implementation, self-check, review, verification, and archive checks.
+SpecLane is a structured AI delivery workflow. It helps an AI coding agent turn requirements and specs into traceable software changes with planning, implementation, self-check, review, verification, and archive checks.
 
 ## 1. Install
 
 ```bash
-npm install -g @gary-coding/spectrace@latest
-spectrace init
-spectrace sync --target both
+npm install -g @gary-coding/speclane@latest
+speclane init
+speclane sync --target both
 ```
 
-`spectrace init` creates a workspace template, installs local skill files when selected, and generates shortcut command templates for supported AI coding tools.
+`speclane init` creates a workspace template, installs local skill files when selected, and generates shortcut command templates for supported AI coding tools.
 
 ## 2. Workspace
 
@@ -52,26 +52,26 @@ Use OpenSpec mode for formal requirement iterations.
 Ask the AI agent:
 
 ```text
-/st:propose add-user-phone-filter
+/sl:propose add-user-phone-filter
 ```
 
 Review the generated OpenSpec change, then bridge tasks into `todo.md`:
 
 ```text
-/st:bridge
+/sl:bridge
 ```
 
 Review `todo.md` manually. After approval:
 
 ```text
-/st:apply
+/sl:apply
 ```
 
 After verification passes, continue with:
 
 ```text
-/st:archive-check
-/st:archive
+/sl:archive-check
+/sl:archive
 ```
 
 ## 4. Todo Mode
@@ -81,29 +81,29 @@ Use todo mode for lightweight tasks or when `todo.md` already exists.
 Write or review `todo.md`, then ask the AI agent:
 
 ```text
-/st:apply
+/sl:apply
 ```
 
-In `auto` mode, SpecTrace proceeds through planning, implementation handoff, self-check, review, and verification.
+In `auto` mode, SpecLane proceeds through planning, implementation handoff, self-check, review, and verification.
 
 ## 5. Command Reference
 
 | Command | Purpose |
 | --- | --- |
-| `/st:init` | Initialize or check the workspace |
-| `/st:propose <change-name>` | Generate or update an OpenSpec change without editing code |
-| `/st:bridge` | Convert OpenSpec `tasks.md` into reviewable `todo.md` |
-| `/st:plan` | Generate an implementation plan without editing code |
-| `/st:apply` | Start delivery and continue through implementation workflow |
-| `/st:review` | Run review stage separately |
-| `/st:verify` | Run verification and script-managed notification |
-| `/st:archive-check` | Check whether OpenSpec archive is safe |
-| `/st:archive` | Archive the OpenSpec change |
-| `/st:status` | Show current workflow status |
+| `/sl:init` | Initialize or check the workspace |
+| `/sl:propose <change-name>` | Generate or update an OpenSpec change without editing code |
+| `/sl:bridge` | Convert OpenSpec `tasks.md` into reviewable `todo.md` |
+| `/sl:plan` | Generate an implementation plan without editing code |
+| `/sl:apply` | Start delivery and continue through implementation workflow |
+| `/sl:review` | Run review stage separately |
+| `/sl:verify` | Run verification and script-managed notification |
+| `/sl:archive-check` | Check whether OpenSpec archive is safe |
+| `/sl:archive` | Archive the OpenSpec change |
+| `/sl:status` | Show current workflow status |
 
 ## 6. Language
 
-SpecTrace supports Chinese and English usage.
+SpecLane supports Chinese and English usage.
 
 - The AI should reply in the same language as your latest message by default.
 - You may explicitly ask: `Please respond in English` or `请使用中文`.

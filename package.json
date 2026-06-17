@@ -1,16 +1,16 @@
 {
-  "name": "@gary-coding/spectrace",
+  "name": "@gary-coding/speclane",
   "version": "0.1.7",
-  "description": "SpecTrace workflow skill and CLI for demand-driven AI delivery with OpenSpec bridge support.",
+  "description": "SpecLane workflow skill and CLI for demand-driven AI delivery with OpenSpec bridge support.",
   "license": "MIT",
   "author": "Gary-Coding",
-  "homepage": "https://github.com/Gary-Coding/spectrace#readme",
+  "homepage": "https://github.com/Gary-Coding/speclane#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gary-Coding/spectrace.git"
+    "url": "git+https://github.com/Gary-Coding/speclane.git"
   },
   "bugs": {
-    "url": "https://github.com/Gary-Coding/spectrace/issues"
+    "url": "https://github.com/Gary-Coding/speclane/issues"
   },
   "engines": {
     "node": ">=18",
@@ -20,8 +20,8 @@
     "access": "public"
   },
   "bin": {
-    "spectrace": "bin/spectrace.js",
-    "st": "bin/spectrace.js"
+    "speclane": "bin/speclane.js",
+    "sl": "bin/speclane.js"
   },
   "files": [
     "bin/",
@@ -40,10 +40,10 @@
     "SECURITY.md"
   ],
   "scripts": {
-    "setup": "python3 scripts/spectrace-setup.py",
-    "check": "python3 -m py_compile scripts/spectrace-cli.py scripts/spectrace-setup.py scripts/spectrace-smoke-test.py scripts/spectrace-e2e-test.py skills/spectrace-rd/scripts/*.py",
-    "smoke": "python3 scripts/spectrace-smoke-test.py",
-    "e2e": "python3 scripts/spectrace-e2e-test.py",
+    "setup": "python3 scripts/speclane-setup.py",
+    "check": "python3 -m py_compile scripts/speclane-cli.py scripts/speclane-setup.py scripts/speclane-smoke-test.py scripts/speclane-e2e-test.py skills/speclane-rd/scripts/*.py",
+    "smoke": "python3 scripts/speclane-smoke-test.py",
+    "e2e": "python3 scripts/speclane-e2e-test.py",
     "pack:check": "npm pack --dry-run"
   },
   "keywords": [

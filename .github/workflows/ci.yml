@@ -28,6 +28,6 @@ jobs:
       - run: npm run check
       - run: npm run smoke
       - run: npm run e2e
-      - run: node bin/spectrace.js --help
-      - run: node bin/spectrace.js version
+      - run: node bin/speclane.js --help
+      - run: node bin/speclane.js version
       - run: npm run pack:check
