@@ -4,12 +4,9 @@
 
 用户只需要输入命令；AI 会根据当前 `workspace.yml`、状态机和 skill 协议调用底层脚本。
 
-English: `/sl:*` commands are AI workflow instructions, not shell commands. The AI agent reads `workspace.yml`, validates the state machine, and calls SpecLane scripts.
-
-## 语言 / Language
+## 语言
 
 - 默认使用用户最新消息的语言回复。
-- If the user writes in English, reply in English by default.
 - 命令名、文件名、JSON key 和 CLI 输出 key 保持原样。
 
 ## 命令顺序
@@ -52,6 +49,19 @@ English: `/sl:*` commands are AI workflow instructions, not shell commands. The 
 | `/sl:archive-check` | 检查 OpenSpec 是否可安全归档 | safe_merge 后 `/sl:archive` |
 | `/sl:archive` | 归档 OpenSpec change 和相关 specs | 完成 |
 | `/sl:status` | 查看当前状态和阻塞项 | 按 allowed_next 继续 |
+| `/sl:recover` | 从标准产物恢复工作流状态视图 | 按 allowed_next 继续 |
+| `/sl:demand new <name>` | 新建需求实例并设为 active demand | `/sl:propose <change> --demand <name>` 或 `/sl:apply --demand <name>` |
+| `/sl:demand use <name>` | 切换 active demand | 后续命令可省略 `--demand` |
+| `/sl:demand list` | 查看工作区所有需求实例 | 按需切换或查看状态 |
+| `/sl:demand status <name>` | 查看指定需求状态 | 按 allowed_next 继续 |
+
+多需求模式下，主流程命令可以追加 demand 参数：
+
+```text
+/sl:propose add-user-phone-filter --demand demand-a
+/sl:bridge --demand demand-a
+/sl:apply --demand demand-a
+```
 
 ## 最短提示词
 
@@ -84,5 +94,7 @@ todo 模式：
 - 飞书/PushPlus 通知只能由 verify 脚本发送。
 - OpenSpec `tasks.md` 在 bridge 后发生变化时，必须重新 `/sl:bridge`。
 - 归档前必须先 `/sl:archive-check`。
+- 状态异常、中断恢复、产物不一致时，先执行 `/sl:recover`，不要猜测下一步。
+- 多需求模式下，每个需求状态位于 `.speclane/demands/<demand-name>/`，AI 禁止跨需求复用 session。
 
-AI 内部执行协议以 `skills/speclane-rd/references/commands/` 下的命令分片为准。
+AI 内部执行协议以 `skills/speclane-rd/references/commands/` 下的命令分片为准；脚本统一来自 `skills/speclane-rd/scripts/`。

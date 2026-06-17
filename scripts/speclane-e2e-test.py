@@ -24,13 +24,48 @@ def main() -> None:
         os.environ["USERPROFILE"] = str(home)
         test_templates_cli(root)
         test_openspec_state_and_bridge(root)
+        test_multi_demand_state_isolation(root)
         test_incomplete_plan_session_is_reused(root)
         test_todo_auto_session_and_verify_compaction(root)
     print("e2e_test=ok")
 
 
 def test_templates_cli(root: Path) -> None:
+    home = root / "home"
     workspace = root / "template-workspace"
+    init_workspace = root / "init-workspace"
+    init_code = root / "init-code"
+    init_code.mkdir(parents=True, exist_ok=True)
+    init_output = run(
+        [
+            "node",
+            str(CLI),
+            "init",
+            "--yes",
+            "--install",
+            "none",
+            "--workspace",
+            str(init_workspace),
+            "--code-path",
+            "../init-code",
+            "--demand-name",
+            "2-init-demand",
+            "--source",
+            "openspec",
+            "--mode",
+            "auto",
+            "--skip-openspec-init",
+        ]
+    )
+    if "demand_yml=created" not in init_output or "active_demand=updated" not in init_output:
+        raise AssertionError("speclane init should create initial demand.yml and active demand")
+    init_workspace_yml = read_text(init_workspace / "workspace.yml")
+    init_demand_yml = read_text(init_workspace / ".speclane" / "demands" / "2-init-demand" / "demand.yml")
+    if "demand_defaults:" not in init_workspace_yml:
+        raise AssertionError("speclane init should create demand_defaults in workspace.yml")
+    if "demand_name: 2-init-demand" not in init_demand_yml or "code_path: ../init-code" not in init_demand_yml:
+        raise AssertionError("speclane init should persist first demand instance config")
+
     output = run(["node", str(CLI), "templates"])
     if "openspec-auto" not in output or "todo-auto" not in output:
         raise AssertionError("templates list did not include expected templates")
@@ -64,12 +99,25 @@ def test_templates_cli(root: Path) -> None:
     run(["node", str(CLI), "doctor", "--workspace", str(workspace), "--fix"], check=False)
     if not (workspace / ".claude" / "commands" / "sl" / "apply.md").exists():
         raise AssertionError("doctor --fix should create sl command templates")
+    if not (workspace / ".claude" / "commands" / "sl" / "recover.md").exists():
+        raise AssertionError("doctor --fix should create recover command template")
+    for installed_skill in [
+        home / ".codex" / "skills" / "speclane-rd" / "SKILL.md",
+        home / ".codex" / "skills" / "speclane-rd" / "scripts" / "run-workflow.py",
+        home / ".claude" / "skills" / "speclane-rd" / "SKILL.md",
+        home / ".claude" / "skills" / "speclane-rd" / "scripts" / "run-workflow.py",
+    ]:
+        if not installed_skill.exists():
+            raise AssertionError(f"doctor --fix should install speclane-rd skill: {installed_skill}")
     run(["node", str(CLI), "commands", "install", "--workspace", str(workspace), "--target", "all"])
     for command_path in [
         workspace / ".cursor" / "commands" / "sl" / "apply.md",
+        workspace / ".cursor" / "commands" / "sl" / "recover.md",
         workspace / ".trae" / "commands" / "sl" / "apply.md",
         workspace / ".kimi" / "commands" / "sl" / "apply.md",
+        workspace / ".kimi" / "commands" / "sl" / "recover.md",
         home_prompt(root) / "sl-apply.md",
+        home_prompt(root) / "sl-recover.md",
     ]:
         if not command_path.exists():
             raise AssertionError(f"commands install all missing {command_path}")
@@ -135,6 +183,8 @@ def test_openspec_state_and_bridge(root: Path) -> None:
     )
     if invalid.returncode == 0 or "请先执行 /sl:propose" not in invalid.output:
         raise AssertionError("/sl:bridge before /sl:propose should be rejected")
+    if "route_guard=blocked" not in invalid.output:
+        raise AssertionError("route-sl should enforce guard even when route-check was skipped")
 
     env_without_openspec = os.environ.copy()
     env_without_openspec["PATH"] = ""
@@ -180,6 +230,20 @@ def test_openspec_state_and_bridge(root: Path) -> None:
     todo = read_text(workspace / "demands" / "8-demo" / "todo.md")
     if "demo-change" not in todo or "demo-service" not in todo:
         raise AssertionError("bridged todo.md missing expected OpenSpec context")
+
+    recover = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:recover",
+        ]
+    )
+    if "recover_result=ok" not in recover or "phase=bridged" not in recover or "/sl:apply" not in recover:
+        raise AssertionError("/sl:recover should rebuild bridged state and allowed_next")
 
     route_check = run(
         [
@@ -313,6 +377,140 @@ def test_openspec_state_and_bridge(root: Path) -> None:
         raise AssertionError("/sl:plan during active delivery should be rejected")
     if final_session["session_id"] != first_session_id or len(list((workspace / ".speclane" / "sessions").iterdir())) != 1:
         raise AssertionError("rejected /sl:plan should not create or switch sessions")
+
+
+def test_multi_demand_state_isolation(root: Path) -> None:
+    workspace = root / "multi-demand-workspace"
+    code_root = root / "multi-code"
+    service_a = code_root / "service-a"
+    service_b = code_root / "service-b"
+    service_a.mkdir(parents=True)
+    service_b.mkdir(parents=True)
+    for service in (service_a, service_b):
+        (service / "package.json").write_text(
+            json.dumps({"name": service.name, "scripts": {"test": "node -e \"process.exit(0)\""}}, indent=2),
+            encoding="utf-8",
+        )
+    (workspace / "docs").mkdir(parents=True)
+    (workspace / "workspace.yml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "mode: auto",
+                "workflow_source: todo",
+                "code_path: ../multi-code",
+                "demand_defaults:",
+                "  workflow_source: todo",
+                "  mode: auto",
+                "  todo_file: demands/${demand_name}/todo.md",
+                "  demand_file: demands/${demand_name}/需求.md",
+                "  output_dir: demands/${demand_name}/output",
+                "  reference_files: []",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    for demand, service_name in (("demand-a", "service-a"), ("demand-b", "service-b")):
+        out = run(
+            [
+                sys.executable,
+                str(RUN_WORKFLOW),
+                "route-sl",
+                "--workspace",
+                str(workspace),
+                "--command-text",
+                f"/sl:demand new {demand}",
+            ]
+        )
+        if f"demand_name={demand}" not in out:
+            raise AssertionError("/sl:demand new should create demand instance")
+        todo = workspace / "demands" / demand / "todo.md"
+        todo.write_text(
+            "# 限制条件\n"
+            f"- 修改的服务是 {service_name}\n\n"
+            "# 待办事项\n\n"
+            f"- [ ] 为 {service_name} 增加状态检查\n",
+            encoding="utf-8",
+        )
+        instance = workspace / ".speclane" / "demands" / demand / "demand.yml"
+        instance.write_text(
+            "\n".join(
+                [
+                    "version: 1",
+                    f"demand_name: {demand}",
+                    "workflow_source: todo",
+                    "mode: auto",
+                    f"todo_file: demands/{demand}/todo.md",
+                    f"demand_file: demands/{demand}/需求.md",
+                    f"output_dir: demands/{demand}/output",
+                    "reference_files: []",
+                    f"code_path: ../multi-code/{service_name}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    first = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:plan --demand demand-a",
+        ]
+    )
+    second = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:plan --demand demand-b",
+        ]
+    )
+    if "session_action=created" not in first or "session_action=created" not in second:
+        raise AssertionError("each demand should create its own planning session")
+    a_session = read_json(workspace / ".speclane" / "demands" / "demand-a" / "current-session.json")
+    b_session = read_json(workspace / ".speclane" / "demands" / "demand-b" / "current-session.json")
+    if a_session["session_id"] == b_session["session_id"]:
+        raise AssertionError("demands should not share session ids")
+    if not (workspace / ".speclane" / "demands" / "demand-a" / "todo-state.json").exists():
+        raise AssertionError("demand-a should have isolated todo state")
+    if not (workspace / ".speclane" / "demands" / "demand-b" / "todo-state.json").exists():
+        raise AssertionError("demand-b should have isolated todo state")
+    active_plain = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:status",
+        ]
+    )
+    if "session_id=" not in active_plain or b_session["session_id"] not in active_plain:
+        raise AssertionError("plain commands should use the active demand after /sl:demand new/use")
+    list_output = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:demand list",
+        ]
+    )
+    if "demand-a" not in list_output or "demand-b" not in list_output:
+        raise AssertionError("/sl:demand list should show both demands")
 
 
 def test_todo_auto_session_and_verify_compaction(root: Path) -> None:

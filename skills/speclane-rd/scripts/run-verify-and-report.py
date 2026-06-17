@@ -264,9 +264,14 @@ def finalize_status(
 def main() -> None:
     parser = argparse.ArgumentParser(description="执行验证命令并生成 verify.md。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
+    parser.add_argument("--demand", help="需求实例名称，用于多需求状态隔离。")
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--force", action="store_true", help="即使当前会话已完成，也强制重新执行验证并覆盖结果。")
     args = parser.parse_args()
+    if getattr(args, "demand", None):
+        import os
+
+        os.environ["SPECLANE_DEMAND_NAME"] = args.demand
 
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)

@@ -12,12 +12,17 @@ from common import (
     current_session_is_stale,
     current_session_meta,
     data_artifact_path,
+    active_demand_path,
     acquire_workflow_lock,
+    demand_instance_path,
+    demand_registry_dir,
+    demand_runtime_dir,
     ensure_plan_can_run,
     ensure_status,
     load_workspace_config,
     now_iso,
     parse_sl_command,
+    parse_simple_yaml,
     planned_codebases,
     planned_codebase,
     read_json,
@@ -25,13 +30,16 @@ from common import (
     release_workflow_lock,
     require_sl_state,
     report_artifact_path,
+    recover_workflow_state_from_artifacts,
     recover_sl_state_from_artifacts,
     todo_path,
     update_sl_state,
     validate_standard_session,
     validate_sl_state,
+    validate_demand_name,
     workflow_source,
     write_managed_json,
+    write_active_demand,
     workspace_root,
 )
 
@@ -69,6 +77,27 @@ def run_python(script_name: str, extra_args: list[str]) -> None:
     )
     if result.returncode != 0:
         raise SystemExit(result.returncode)
+
+
+def scoped_workspace_args(workspace: Path | None) -> list[str]:
+    args = ["--workspace", str(workspace)] if workspace else []
+    demand_name = current_command_demand()
+    if demand_name:
+        args.extend(["--demand", demand_name])
+    return args
+
+
+def current_command_demand() -> str:
+    import os
+
+    return str(os.environ.get("SPECLANE_DEMAND_NAME", "")).strip()
+
+
+def set_command_demand(demand_name: str) -> None:
+    import os
+
+    if demand_name:
+        os.environ["SPECLANE_DEMAND_NAME"] = validate_demand_name(demand_name)
 
 
 def load_status(workspace: Path | None) -> tuple[dict, Path]:
@@ -175,15 +204,44 @@ def command_route_st(workspace: Path | None, command_text: str | None, timeout_s
     sl_command = parsed["sl_command"]
     run_command = parsed["run_command"]
     argument = str(parsed.get("argument", "")).strip()
+    demand_name = str(parsed.get("demand_name", "")).strip()
+    if demand_name:
+        set_command_demand(demand_name)
     print(f"sl_command={sl_command}")
     print(f"run_command={run_command}")
     if argument:
         print(f"argument={argument}")
+    if demand_name:
+        print(f"demand_name={demand_name}")
+    if sl_command == "/sl:demand":
+        command_demand(workspace, argument, str(parsed.get("raw_text", "")))
+        return
     if sl_command == "/sl:init":
         command_init(workspace)
         print_route_reply_constraint(sl_command)
         return
     config = load_workspace_config(workspace)
+    preflight = validate_sl_state(config, run_command)
+    if not preflight.get("valid"):
+        payload = {
+            "sl_command": sl_command,
+            "run_command": run_command,
+            "result": "blocked",
+            "phase": preflight.get("phase", ""),
+            "allowed_next": preflight.get("allowed_next", []),
+            "errors": preflight.get("errors", []),
+            "next_action": "请按 allowed_next 或错误提示继续；如状态异常，先执行 /sl:recover。",
+        }
+        if output_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("route_guard=blocked")
+            print(f"phase={payload['phase']}")
+            print(f"allowed_next={','.join(str(item) for item in payload['allowed_next'])}")
+            for item in payload["errors"]:
+                print(f"error={item}")
+            print(f"next_action={payload['next_action']}")
+        raise SystemExit(1)
     lock_path = None
     if sl_command != "/sl:status":
         try:
@@ -212,6 +270,8 @@ def command_route_st(workspace: Path | None, command_text: str | None, timeout_s
             command_archive_openspec(workspace)
         elif sl_command == "/sl:status":
             command_status(workspace)
+        elif sl_command == "/sl:recover":
+            command_recover(workspace)
         else:
             raise SystemExit(f"不支持的 /sl:* 命令：{sl_command}")
     finally:
@@ -239,15 +299,19 @@ def command_route_st(workspace: Path | None, command_text: str | None, timeout_s
 def command_route_check(workspace: Path | None, command_text: str | None) -> None:
     if not command_text:
         raise SystemExit("缺少 /sl:* 命令文本。")
-    config = load_workspace_config(workspace)
     parsed = parse_sl_command(command_text)
     sl_command = parsed["sl_command"]
     run_command = parsed["run_command"]
+    demand_name = str(parsed.get("demand_name", "")).strip()
+    if demand_name:
+        set_command_demand(demand_name)
+    config = load_workspace_config(workspace)
     result = validate_sl_state(config, run_command)
     payload = {
         "sl_command": sl_command,
         "run_command": run_command,
         "argument": str(parsed.get("argument", "")).strip(),
+        "demand_name": demand_name,
         "workflow_source": workflow_source(config),
         "allowed": bool(result.get("valid")),
         "phase": result.get("phase", ""),
@@ -263,6 +327,110 @@ def command_route_check(workspace: Path | None, command_text: str | None) -> Non
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if not payload["allowed"]:
         raise SystemExit(1)
+
+
+def _demand_config_text(demand_name: str, workflow_source_value: str, mode: str, change_name: str = "") -> str:
+    lines = [
+        "version: 1",
+        f"demand_name: {demand_name}",
+        f"workflow_source: {workflow_source_value}",
+        f"mode: {mode}",
+        f"demand_file: demands/{demand_name}/需求.md",
+        f"todo_file: demands/{demand_name}/todo.md",
+        f"output_dir: demands/{demand_name}/output",
+        "reference_files: []",
+    ]
+    if change_name:
+        lines.extend(["openspec:", f"  change_name: {change_name}"])
+    return "\n".join(lines) + "\n"
+
+
+def command_demand(workspace: Path | None, action: str, raw_text: str) -> None:
+    root = workspace_root(workspace)
+    action = action or "list"
+    parts = raw_text.split()
+    demand_arg = ""
+    if len(parts) >= 3 and not parts[2].startswith("--"):
+        demand_arg = parts[2]
+    if action in ("new", "use", "status") and not demand_arg:
+        raise SystemExit(f"/sl:demand {action} 需要需求名称。")
+
+    if action == "new":
+        demand_name = validate_demand_name(demand_arg)
+        demand_dir = root / "demands" / demand_name
+        demand_dir.mkdir(parents=True, exist_ok=True)
+        demand_runtime_dir(root, demand_name).mkdir(parents=True, exist_ok=True)
+        demand_file = demand_dir / "需求.md"
+        todo_file = demand_dir / "todo.md"
+        if not demand_file.exists():
+            demand_file.write_text("# 需求说明\n\n## 背景\n\n## 目标\n\n## 验收标准\n\n- [ ] 补充验收标准。\n", encoding="utf-8")
+        if not todo_file.exists():
+            todo_file.write_text("# 待办事项\n\n- [ ] 根据需求补充任务。\n", encoding="utf-8")
+        instance = demand_instance_path(root, demand_name)
+        if not instance.exists():
+            instance.write_text(_demand_config_text(demand_name, "openspec", "auto"), encoding="utf-8")
+        write_active_demand(root, demand_name)
+        print("demand_action=new")
+        print(f"demand_name={demand_name}")
+        print(f"demand_file={demand_file}")
+        print(f"todo_file={todo_file}")
+        print(f"demand_config={instance}")
+        print("active_demand=updated")
+        return
+
+    if action == "use":
+        demand_name = validate_demand_name(demand_arg)
+        if not demand_instance_path(root, demand_name).exists():
+            raise SystemExit(f"需求实例不存在：{demand_instance_path(root, demand_name)}。请先执行 /sl:demand new {demand_name}。")
+        write_active_demand(root, demand_name)
+        print("demand_action=use")
+        print(f"demand_name={demand_name}")
+        print("active_demand=updated")
+        return
+
+    if action == "list":
+        print("demand_action=list")
+        active = ""
+        if active_demand_path(root).exists():
+            try:
+                active_data = parse_simple_yaml(active_demand_path(root).read_text(encoding="utf-8"))
+                active = str(active_data.get("demand_name", "")) if isinstance(active_data, dict) else ""
+            except Exception:
+                active = ""
+        print(f"active_demand={active}")
+        registry = demand_registry_dir(root)
+        if not registry.exists():
+            print("demands=")
+            return
+        names = [path.name for path in sorted(registry.iterdir()) if (path / "demand.yml").exists()]
+        print("demands=" + ",".join(names))
+        for name in names:
+            print(f"demand.{name}.config={demand_instance_path(root, name)}")
+        return
+
+    if action == "status":
+        demand_name = validate_demand_name(demand_arg)
+        set_command_demand(demand_name)
+        print("demand_action=status")
+        print(f"demand_name={demand_name}")
+        command_status(workspace)
+        return
+
+    raise SystemExit("不支持的 /sl:demand 操作。支持：new/use/list/status。")
+
+
+def command_recover(workspace: Path | None) -> None:
+    config = load_workspace_config(workspace)
+    state = recover_workflow_state_from_artifacts(config)
+    print("recover_result=ok")
+    print(f"phase={state.get('phase', '')}")
+    print(f"allowed_next={','.join(str(item) for item in state.get('allowed_next', []))}")
+    if state.get("blocked_reason"):
+        print(f"blocked_reason={state.get('blocked_reason')}")
+    artifacts = state.get("artifacts", {})
+    if isinstance(artifacts, dict):
+        for key in sorted(artifacts):
+            print(f"artifact.{key}={artifacts[key]}")
 
 
 def print_route_reply_constraint(sl_command: str) -> None:
@@ -300,7 +468,7 @@ def command_next(workspace: Path | None, timeout_seconds: int) -> None:
 
 
 def command_init(workspace: Path | None) -> None:
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("init-workspace.py", args)
 
 
@@ -312,13 +480,12 @@ def command_bootstrap_openspec(workspace: Path | None, *, explicit_sl_bridge: bo
         )
     require_sl_state(load_workspace_config(workspace), "bootstrap-openspec")
     args = ["--explicit-sl-bridge"]
-    if workspace:
-        args.extend(["--workspace", str(workspace)])
+    args.extend(scoped_workspace_args(workspace))
     run_python("bootstrap-openspec.py", args)
 
 
 def command_propose_openspec(workspace: Path | None, change_name: str | None = None) -> None:
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     if change_name:
         args.append(change_name)
     run_python("propose-openspec.py", args)
@@ -333,19 +500,19 @@ def command_propose_openspec(workspace: Path | None, change_name: str | None = N
 
 
 def command_writeback_openspec(workspace: Path | None) -> None:
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("writeback-openspec.py", args)
 
 
 def command_prepare_archive_openspec(workspace: Path | None) -> None:
     require_sl_state(load_workspace_config(workspace), "prepare-archive-openspec")
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("prepare-archive-openspec.py", args)
 
 
 def command_archive_openspec(workspace: Path | None) -> None:
     require_sl_state(load_workspace_config(workspace), "archive-openspec")
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("archive-openspec.py", args)
 
 
@@ -377,7 +544,7 @@ def command_plan(workspace: Path | None) -> None:
         print("session_action=created")
         print(f"session_id={session_meta.get('session_id', '')}")
     command_discover(workspace)
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("generate-smart-plan.py", args)
     update_sl_state(
         config,
@@ -392,7 +559,7 @@ def command_plan(workspace: Path | None) -> None:
 
 
 def command_discover(workspace: Path | None) -> None:
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("generate-discovery.py", args)
 
 
@@ -419,7 +586,7 @@ def command_start_implement(workspace: Path | None) -> None:
 def command_finish_implement(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
     require_sl_state(config, "finish-implement")
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("generate-self-check.py", args)
     update_sl_state(
         config,
@@ -465,7 +632,7 @@ def command_finish_implement(workspace: Path | None) -> None:
 def command_review(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
     require_sl_state(config, "review")
-    args = ["--workspace", str(workspace)] if workspace else []
+    args = scoped_workspace_args(workspace)
     run_python("generate-review-report.py", args)
     update_sl_state(
         config,
@@ -486,8 +653,7 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
     args = ["--timeout-seconds", str(timeout_seconds)]
     if force:
         args.append("--force")
-    if workspace:
-        args.extend(["--workspace", str(workspace)])
+    args.extend(scoped_workspace_args(workspace))
     run_python("run-verify-and-report.py", args)
     verify_result = read_json(data_artifact_path(config, "verify.json"), {})
     status_result = read_json(data_artifact_path(config, "status.json"), {})
@@ -508,7 +674,7 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
         blocked_reason="" if next_phase in ("verified", "done") else result_text or status_result.get("current_task", "") or "验证未通过",
     )
     if workflow_source(config) == "openspec":
-        run_python("writeback-openspec.py", ["--workspace", str(workspace)] if workspace else [])
+        run_python("writeback-openspec.py", scoped_workspace_args(workspace))
 
 
 def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
@@ -537,15 +703,20 @@ def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="speclane 统一工作流入口。")
-    parser.add_argument("command", choices=["route-sl", "route-check", "init", "propose-openspec", "bootstrap-openspec", "writeback-openspec", "prepare-archive-openspec", "archive-openspec", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "status", "next", "validate-state", "assert-standard-session"])
+    parser.add_argument("command", choices=["route-sl", "route-check", "init", "propose-openspec", "bootstrap-openspec", "writeback-openspec", "prepare-archive-openspec", "archive-openspec", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "status", "recover", "next", "validate-state", "assert-standard-session"])
     parser.add_argument("change_name", nargs="?", help="配合 propose-openspec 或 validate-state 使用。")
     parser.add_argument("--command-text", help="配合 route-sl 使用，传入完整 /sl:* 命令文本。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
+    parser.add_argument("--demand", help="需求实例名称，用于多需求状态隔离。")
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--force", action="store_true", help="配合 verify 使用，强制重跑验证并覆盖结果。")
     parser.add_argument("--json", action="store_true", help="输出机器可读摘要。")
     parser.add_argument("--explicit-sl-bridge", action="store_true", help="确认本次 bootstrap-openspec 来自用户显式 /sl:bridge 命令。")
     args = parser.parse_args()
+    if getattr(args, "demand", None):
+        import os
+
+        os.environ["SPECLANE_DEMAND_NAME"] = args.demand
 
     workspace = Path(args.workspace).expanduser() if args.workspace else None
 
@@ -576,13 +747,15 @@ def main() -> None:
     elif args.command == "finish-implement":
         command_finish_implement(workspace)
     elif args.command == "self-check":
-        run_python("generate-self-check.py", ["--workspace", str(workspace)] if workspace else [])
+        run_python("generate-self-check.py", scoped_workspace_args(workspace))
     elif args.command == "review":
         command_review(workspace)
     elif args.command == "verify":
         command_verify(workspace, args.timeout_seconds, args.force)
     elif args.command == "status":
         command_status(workspace)
+    elif args.command == "recover":
+        command_recover(workspace)
     elif args.command == "next":
         command_next(workspace, args.timeout_seconds)
     elif args.command == "validate-state":

@@ -116,7 +116,12 @@ def build_markdown(payload: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="根据 OpenSpec 回写结果生成 archive 输入。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
+    parser.add_argument("--demand", help="需求实例名称，用于多需求状态隔离。")
     args = parser.parse_args()
+    if getattr(args, "demand", None):
+        import os
+
+        os.environ["SPECLANE_DEMAND_NAME"] = args.demand
 
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)

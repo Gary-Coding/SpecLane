@@ -43,9 +43,17 @@ def main() -> None:
         run(["node", str(CLI), "migrate", "--workspace", str(workspace), "--dry-run"])
         assert_file(workspace / "workspace.yml")
         assert_file(workspace / "demands" / "1-demo" / "需求.md")
+        assert_file(workspace / ".speclane" / "active-demand.yml")
+        assert_file(workspace / ".speclane" / "demands" / "1-demo" / "demand.yml")
         assert_dir(workspace / "openspec" / "changes")
         assert_file(workspace / ".claude" / "commands" / "sl" / "propose.md")
         assert_file(workspace / ".claude" / "commands" / "sl" / "bridge.md")
+        workspace_yml = (workspace / "workspace.yml").read_text(encoding="utf-8")
+        demand_yml = (workspace / ".speclane" / "demands" / "1-demo" / "demand.yml").read_text(encoding="utf-8")
+        if "demand_defaults:" not in workspace_yml:
+            raise AssertionError("workspace.yml should contain demand_defaults for multi-demand standard layout")
+        if "demand_name: 1-demo" not in demand_yml or "workflow_source: openspec" not in demand_yml:
+            raise AssertionError("initial demand.yml did not contain expected demand instance config")
 
         legacy = root / "legacy-workspace"
         legacy.mkdir()

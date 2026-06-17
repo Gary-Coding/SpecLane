@@ -254,8 +254,12 @@ def _expand_workspace_value(value: Any, variables: dict[str, str]) -> Any:
     return value
 
 
-def expand_workspace_variables(config: dict[str, Any], root: Path) -> dict[str, Any]:
+def expand_workspace_variables(config: dict[str, Any], root: Path, extra_vars: dict[str, str] | None = None) -> dict[str, Any]:
     user_vars = _stringify_workspace_vars(config.get("vars", {}))
+    if extra_vars:
+        for key, value in extra_vars.items():
+            if value not in ("", None):
+                user_vars[str(key)] = str(value)
     variables = {
         "workspace_root": str(root),
         **user_vars,
@@ -333,6 +337,99 @@ def workspace_config_path(workspace: Path | None = None) -> Path:
     if legacy_config.exists():
         return legacy_config
     return workspace_yml
+
+
+def demand_registry_dir(root: Path | str) -> Path:
+    return Path(str(root)).resolve() / ".speclane" / "demands"
+
+
+def demand_runtime_dir(root: Path | str, demand_name: str) -> Path:
+    return demand_registry_dir(root) / validate_demand_name(demand_name)
+
+
+def demand_instance_path(root: Path | str, demand_name: str) -> Path:
+    return demand_runtime_dir(root, demand_name) / "demand.yml"
+
+
+def active_demand_path(root: Path | str) -> Path:
+    return Path(str(root)).resolve() / ".speclane" / "active-demand.yml"
+
+
+def validate_demand_name(demand_name: str) -> str:
+    normalized = str(demand_name).strip()
+    if not normalized:
+        raise ValueError("需求名称不能为空。")
+    if "/" in normalized or "\\" in normalized:
+        raise ValueError("需求名称不能包含路径分隔符。")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", normalized):
+        raise ValueError("需求名称必须匹配 [A-Za-z0-9][A-Za-z0-9._-]*。")
+    return normalized
+
+
+def read_active_demand(root: Path | str) -> str:
+    data = parse_simple_yaml(active_demand_path(root).read_text(encoding="utf-8")) if active_demand_path(root).exists() else {}
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("demand_name", "")).strip()
+
+
+def write_active_demand(root: Path | str, demand_name: str) -> Path:
+    selected = validate_demand_name(demand_name)
+    path = active_demand_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"demand_name: {selected}\nupdated_at: {now_iso()}\n", encoding="utf-8")
+    return path
+
+
+def configured_demand_name(config: dict[str, Any]) -> str:
+    vars_map = config.get("vars", {})
+    if isinstance(vars_map, dict):
+        return str(vars_map.get("demand_name", "")).strip()
+    return ""
+
+
+def resolve_requested_demand(root: Path, raw_config: dict[str, Any], explicit_demand: str | None = None) -> str:
+    requested = str(explicit_demand or "").strip() or str(os.environ.get("SPECLANE_DEMAND_NAME", "")).strip()
+    if requested:
+        return validate_demand_name(requested)
+    active = read_active_demand(root)
+    if active:
+        return validate_demand_name(active)
+    vars_map = raw_config.get("vars", {})
+    if isinstance(vars_map, dict):
+        configured = str(vars_map.get("demand_name", "")).strip()
+        if configured and demand_instance_path(root, configured).exists():
+            return validate_demand_name(configured)
+    return ""
+
+
+def apply_demand_defaults(config: dict[str, Any], demand_name: str) -> dict[str, Any]:
+    if not demand_name:
+        return config
+    defaults = config.get("demand_defaults", {})
+    if defaults in ("", None):
+        defaults = {}
+    if not isinstance(defaults, dict):
+        raise ValueError("workspace.yml 中的 demand_defaults 必须是对象。")
+    for key in ("workflow_source", "mode", "demand_file", "todo_file", "output_dir", "reference_files"):
+        if key in defaults and config.get(key) in ("", None, [], {}):
+            config[key] = defaults[key]
+    config.setdefault("demand_file", f"demands/{demand_name}/需求.md")
+    config.setdefault("todo_file", f"demands/{demand_name}/todo.md")
+    config.setdefault("output_dir", f"demands/{demand_name}/output")
+    return config
+
+
+def load_demand_instance(root: Path, demand_name: str) -> dict[str, Any]:
+    if not demand_name:
+        return {}
+    path = demand_instance_path(root, demand_name)
+    if not path.exists():
+        return {}
+    loaded = parse_simple_yaml(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError(f"需求实例配置必须是对象：{path}")
+    return loaded
 
 
 def skill_config_path() -> Path:
@@ -470,7 +567,23 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
     if not config_path.exists():
         raise FileNotFoundError(f"未找到工作空间配置文件：{config_path}")
 
-    config = expand_workspace_variables(parse_simple_yaml(config_path.read_text(encoding="utf-8")), root)
+    raw_config = parse_simple_yaml(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw_config, dict):
+        raise ValueError("workspace.yml 顶层必须是对象。")
+    demand_name = resolve_requested_demand(root, raw_config)
+    demand_config = load_demand_instance(root, demand_name)
+    merged_raw = dict(raw_config)
+    if demand_config:
+        for key, value in demand_config.items():
+            if key in ("version",):
+                continue
+            merged_raw[key] = value
+    if demand_name:
+        vars_map = dict(merged_raw.get("vars", {}) if isinstance(merged_raw.get("vars", {}), dict) else {})
+        vars_map["demand_name"] = demand_name
+        merged_raw["vars"] = vars_map
+        merged_raw = apply_demand_defaults(merged_raw, demand_name)
+    config = expand_workspace_variables(merged_raw, root, {"demand_name": demand_name} if demand_name else None)
     config.setdefault("version", 1)
     config.setdefault("mode", "manual")
     config.setdefault("workflow_source", "todo")
@@ -534,9 +647,10 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
         changes_dir = resolve_workspace_path(root, changes_dir_raw) if changes_dir_raw not in ("", None) else None
         configured_change_dir = resolve_workspace_path(root, change_dir_raw) if change_dir_raw not in ("", None) else None
 
-        active_change = read_json(active_openspec_change_path(root), {})
-        bridge_context = read_json(root / ".speclane" / "openspec-bridge-context.json", {})
-        st_state = read_json(root / ".speclane" / "sl-state.json", {})
+        active_change = read_json(active_openspec_change_path(root, demand_name), {})
+        state_root = demand_runtime_dir(root, demand_name) if demand_name else root / ".speclane"
+        bridge_context = read_json(state_root / "openspec-bridge-context.json", {})
+        st_state = read_json(state_root / "sl-state.json", {})
         active_change_name = str(active_change.get("change_name", "")).strip()
         bridge_change_name = str(bridge_context.get("change_name", "")).strip()
         state_change_name = str(st_state.get("current_change", "")).strip()
@@ -593,6 +707,8 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
     skill_config = load_skill_config()
     config["notification"] = skill_config.get("notification", {})
     config["__workspace_root"] = str(root)
+    config["__demand_name"] = demand_name
+    config["__demand_instance_path"] = str(demand_instance_path(root, demand_name)) if demand_name else ""
     config["__config_path"] = str(config_path)
     config["__skill_root"] = str(skill_root())
     config["__skill_config_path"] = str(skill_config_path())
@@ -636,10 +752,17 @@ def workflow_source(config: dict[str, Any]) -> str:
 
 
 def artifacts_dir(config: dict[str, Any]) -> Path:
-    return Path(str(config["__workspace_root"])).resolve() / ".speclane"
+    root = Path(str(config["__workspace_root"])).resolve()
+    demand_name = str(config.get("__demand_name", "")).strip()
+    if demand_name:
+        return demand_runtime_dir(root, demand_name)
+    return root / ".speclane"
 
 
-def active_openspec_change_path(root: Path | str) -> Path:
+def active_openspec_change_path(root: Path | str, demand_name: str = "") -> Path:
+    selected = str(demand_name).strip()
+    if selected:
+        return demand_runtime_dir(root, selected) / "current-openspec-change.json"
     return Path(str(root)).resolve() / ".speclane" / "current-openspec-change.json"
 
 
@@ -843,6 +966,8 @@ SL_COMMAND_TO_RUN_COMMAND: dict[str, str] = {
     "/sl:archive-check": "prepare-archive-openspec",
     "/sl:archive": "archive-openspec",
     "/sl:status": "status",
+    "/sl:recover": "recover",
+    "/sl:demand": "demand",
 }
 
 
@@ -882,6 +1007,7 @@ def update_sl_state(
     state.update(
         {
             "phase": phase,
+            "last_command": lasl_command,
             "lasl_command": lasl_command,
             "current_change": openspec_change_name(config) if workflow_source(config) == "openspec" else "",
             "blocked_reason": blocked_reason,
@@ -1164,6 +1290,7 @@ def recover_sl_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
         state.update(
             {
                 "phase": phase,
+                "last_command": lasl_command,
                 "lasl_command": lasl_command,
                 "current_change": openspec_change_name(config),
                 "blocked_reason": "",
@@ -1172,6 +1299,52 @@ def recover_sl_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
         )
         write_sl_state(config, state)
     return read_sl_state(config)
+
+
+def recover_todo_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
+    phase, status, session_meta = _status_phase_for_todo(config)
+    artifacts: dict[str, Any] = {}
+    if session_meta:
+        artifact_names = {
+            "plan_json": "plan.json",
+            "self_check_json": "self-check.json",
+            "review_json": "review.json",
+            "verify_json": "verify.json",
+            "notification_json": "notification.json",
+        }
+        report_names = {
+            "plan_md": "plan.md",
+            "self_check_md": "self-check.md",
+            "review_md": "review.md",
+            "verify_md": "verify.md",
+        }
+        for key, name in artifact_names.items():
+            path = data_artifact_path(config, name, session_meta)
+            if path.exists():
+                artifacts[key] = str(path)
+        for key, name in report_names.items():
+            path = report_artifact_path(config, name, session_meta)
+            if path.exists():
+                artifacts[key] = str(path)
+    state = read_sl_state(config)
+    state.update(
+        {
+            "phase": phase,
+            "last_command": "",
+            "lasl_command": "",
+            "current_change": "",
+            "blocked_reason": str(status.get("current_task", "")) if phase == "blocked" and isinstance(status, dict) else "",
+            "artifacts": artifacts,
+        }
+    )
+    write_sl_state(config, state)
+    return read_sl_state(config)
+
+
+def recover_workflow_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
+    if workflow_source(config) == "openspec":
+        return recover_sl_state_from_artifacts(config)
+    return recover_todo_state_from_artifacts(config)
 
 
 def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any]:
@@ -1214,6 +1387,9 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
     sl_command = RUN_COMMAND_TO_SL_COMMAND.get(run_command, "")
     if not sl_command:
         return {"valid": True, "phase": "", "allowed_next": []}
+    if run_command in ("status", "recover"):
+        state = recover_workflow_state_from_artifacts(config)
+        return {"valid": True, "phase": state.get("phase", ""), "allowed_next": state.get("allowed_next", [])}
     if sl_command == "/sl:propose":
         return {"valid": True, "phase": read_sl_state(config).get("phase", "draft"), "allowed_next": ["/sl:propose"]}
 
@@ -1298,12 +1474,16 @@ def parse_sl_command(text: str) -> dict[str, Any]:
         raise ValueError("未识别到 /sl:* 命令。")
     sl_command = match.group(1)
     argument = match.group(2) or ""
+    demand_match = re.search(r"(?:^|\s)--demand(?:=|\s+)([A-Za-z0-9][A-Za-z0-9._-]*)", stripped)
+    demand_name = validate_demand_name(demand_match.group(1)) if demand_match else ""
     if sl_command not in SL_COMMAND_TO_RUN_COMMAND:
         raise ValueError(f"不支持的 /sl:* 命令：{sl_command}")
     return {
         "sl_command": sl_command,
         "run_command": SL_COMMAND_TO_RUN_COMMAND[sl_command],
         "argument": argument,
+        "demand_name": demand_name,
+        "raw_text": stripped,
     }
 
 
@@ -1463,7 +1643,7 @@ def select_openspec_change(config: dict[str, Any], change_name: str) -> dict[str
 
 def write_active_openspec_change(config: dict[str, Any], change_name: str) -> Path:
     selected_name = validate_openspec_change_name(change_name)
-    active_path = active_openspec_change_path(config["__workspace_root"])
+    active_path = active_openspec_change_path(config["__workspace_root"], str(config.get("__demand_name", "")))
     active_path.parent.mkdir(parents=True, exist_ok=True)
     write_managed_json(
         config,

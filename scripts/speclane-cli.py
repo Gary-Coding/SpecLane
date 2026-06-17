@@ -13,7 +13,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = REPO_ROOT / "skills" / "speclane-rd"
+SKILLS_ROOT = REPO_ROOT / "skills"
+RD_SKILL_DIR = SKILLS_ROOT / "speclane-rd"
 PACKAGE_JSON = REPO_ROOT / "package.json"
 TEMPLATE_DIR = REPO_ROOT / "templates" / "workspaces"
 
@@ -84,6 +85,21 @@ description: SpecLane：查看工作流状态
 ---
 
 请使用 SpecLane RD skill 执行：`/sl:status`。
+""",
+    "recover.md": """---
+description: SpecLane：从标准产物恢复工作流状态
+---
+
+请使用 SpecLane RD skill 执行：`/sl:recover`。
+只恢复和诊断状态，不要改代码。
+""",
+    "demand.md": """---
+description: SpecLane：管理多需求实例
+argument-hint: new|use|list|status <demand-name>
+---
+
+请使用 SpecLane RD skill 执行：`/sl:demand $ARGUMENTS`。
+只管理需求实例和当前 active demand，不要改业务代码。
 """,
 }
 
@@ -208,31 +224,35 @@ def run_setup(args: list[str]) -> None:
 def install_targets(target: str, force: bool) -> None:
     targets = []
     if target in ("codex", "both"):
-        targets.append(skill_target("codex"))
+        targets.append(skills_base("codex"))
     if target in ("claude", "both"):
-        targets.append(skill_target("claude"))
+        targets.append(skills_base("claude"))
     for item in targets:
-        install_skill(item, force=force)
+        install_skill_set(item, force=force)
 
 
-def skill_target(kind: str) -> Path:
+def skills_base(kind: str) -> Path:
     if kind == "codex":
         base = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser()
     elif kind == "claude":
         base = Path(os.environ.get("CLAUDE_HOME", "~/.claude")).expanduser()
     else:
         raise ValueError(kind)
-    return base / "skills" / "speclane-rd"
+    return base / "skills"
 
 
-def install_skill(target: Path, force: bool) -> None:
-    if not SKILL_DIR.exists():
-        raise SystemExit(f"skill 目录不存在：{SKILL_DIR}")
+def install_skill_set(skills_root: Path, force: bool) -> None:
+    copy_skill_dir(RD_SKILL_DIR, skills_root / "speclane-rd", force=force)
+
+
+def copy_skill_dir(source: Path, target: Path, force: bool) -> None:
+    if not source.exists():
+        raise SystemExit(f"skill 目录不存在：{source}")
     if target.exists() and force:
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
-        SKILL_DIR,
+        source,
         target,
         dirs_exist_ok=True,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
@@ -284,12 +304,20 @@ def doctor(workspace: Path, output_json: bool, fix: bool = False) -> int:
     add_check(checks, "python", "ok", sys.version.split()[0])
     add_check(checks, "node", "ok" if shutil.which("node") else "fail", shutil.which("node") or "未安装")
     add_check(checks, "npm", "ok" if shutil.which("npm") else "fail", shutil.which("npm") or "未安装")
-    add_check(checks, "skill_source", "ok" if SKILL_DIR.exists() else "fail", str(SKILL_DIR))
-    add_check(checks, "codex_skill", "ok" if skill_target("codex").exists() else "warn", str(skill_target("codex")))
-    add_check(checks, "claude_skill", "ok" if skill_target("claude").exists() else "warn", str(skill_target("claude")))
+    add_check(checks, "skill_source", "ok" if RD_SKILL_DIR.exists() else "fail", str(RD_SKILL_DIR))
+    add_install_checks(checks, "codex", skills_base("codex"))
+    add_install_checks(checks, "claude", skills_base("claude"))
     add_check(checks, "openspec_cli", "ok" if shutil.which("openspec") else "warn", shutil.which("openspec") or "未安装")
     add_check(checks, "workspace", "ok" if workspace.exists() else "fail", str(workspace))
     add_check(checks, "workspace.commands.sl", "ok" if workspace_commands_ready(workspace) else "warn", str(workspace / ".claude" / "commands" / "sl"))
+    for platform_name in ("codex", "cursor", "trae", "kimi"):
+        target_dir = command_target_dirs(workspace, platform_name)[0][1]
+        add_check(
+            checks,
+            f"workspace.commands.{platform_name}",
+            "ok" if commands_ready_for_target(workspace, platform_name) else "warn",
+            str(target_dir),
+        )
     add_check(checks, "workspace.openspec.root", "ok" if (workspace / "openspec").exists() else "warn", str(workspace / "openspec"))
 
     workspace_yml = workspace / "workspace.yml"
@@ -321,8 +349,25 @@ def doctor(workspace: Path, output_json: bool, fix: bool = False) -> int:
 
 def workspace_commands_ready(workspace: Path) -> bool:
     commands_dir = workspace / ".claude" / "commands" / "sl"
-    required = ["propose.md", "bridge.md", "plan.md", "apply.md", "status.md"]
+    required = ["propose.md", "bridge.md", "plan.md", "apply.md", "status.md", "recover.md", "demand.md"]
     return all((commands_dir / name).exists() for name in required)
+
+
+def commands_ready_for_target(workspace: Path, target: str) -> bool:
+    for name, directory in command_target_dirs(workspace, target):
+        required = [f"sl-{filename}" if name == "codex" else filename for filename in SL_COMMANDS]
+        if not all((directory / filename).exists() for filename in required):
+            return False
+    return True
+
+
+def add_install_checks(checks: list[dict[str, str]], name: str, base: Path) -> None:
+    required = [
+        base / "speclane-rd" / "SKILL.md",
+        base / "speclane-rd" / "scripts" / "run-workflow.py",
+    ]
+    status = "ok" if all(path.exists() for path in required) else "warn"
+    add_check(checks, f"{name}_skills", status, str(base))
 
 
 def ensure_workspace_commands(workspace: Path) -> None:
@@ -356,7 +401,7 @@ def install_commands(workspace: Path, target: str) -> None:
 def doctor_suggestions(checks: list[dict[str, str]]) -> list[str]:
     by_name = {item["name"]: item for item in checks}
     suggestions: list[str] = []
-    if by_name.get("codex_skill", {}).get("status") != "ok" or by_name.get("claude_skill", {}).get("status") != "ok":
+    if by_name.get("codex_skills", {}).get("status") != "ok" or by_name.get("claude_skills", {}).get("status") != "ok":
         suggestions.append("执行 `speclane sync --target both` 同步最新 skill。")
     if by_name.get("workspace.commands.sl", {}).get("status") != "ok":
         suggestions.append("执行 `speclane doctor --fix` 补齐工作区 `.claude/commands/sl/*` 快捷命令。")
@@ -387,7 +432,7 @@ def read_workspace_yaml(path: Path) -> dict[str, object]:
             raise ValueError("workspace.yml 顶层必须是对象")
         return loaded
 
-    common_path = SKILL_DIR / "scripts" / "common.py"
+    common_path = RD_SKILL_DIR / "scripts" / "common.py"
     spec = importlib.util.spec_from_file_location("st_common_for_cli", common_path)
     if spec is None or spec.loader is None:
         raise ValueError(f"无法加载 YAML 解析器：{common_path}")
@@ -416,6 +461,7 @@ def config_str(config: dict[str, object], key: str, default: str = "") -> str:
 
 
 def validate_workspace(checks: list[dict[str, str]], workspace: Path, config: dict[str, object]) -> None:
+    config = merged_workspace_config(workspace, config)
     for key in ("workflow_source", "mode", "code_path", "output_dir"):
         value = config_str(config, key)
         add_check(checks, f"config.{key}", "ok" if value else "fail", value or "缺失")
@@ -455,6 +501,39 @@ def validate_workspace(checks: list[dict[str, str]], workspace: Path, config: di
         resolved = resolve_workspace_path(workspace, expand_vars(todo_file, config))
         status = "ok" if resolved.exists() else ("warn" if source == "openspec" else "fail")
         add_check(checks, "todo_file.exists", status, str(resolved))
+
+
+def merged_workspace_config(workspace: Path, config: dict[str, object]) -> dict[str, object]:
+    demand_name = active_demand_name(workspace) or config_str(config, "vars.demand_name")
+    if not demand_name:
+        return config
+    demand_yml = workspace / ".speclane" / "demands" / demand_name / "demand.yml"
+    if not demand_yml.exists():
+        return config
+    try:
+        demand_config = read_workspace_yaml(demand_yml)
+    except ValueError:
+        return config
+    merged = dict(config)
+    for key, value in demand_config.items():
+        if key == "version":
+            continue
+        merged[key] = value
+    vars_map = dict(merged.get("vars", {}) if isinstance(merged.get("vars", {}), dict) else {})
+    vars_map["demand_name"] = demand_name
+    merged["vars"] = vars_map
+    return merged
+
+
+def active_demand_name(workspace: Path) -> str:
+    path = workspace / ".speclane" / "active-demand.yml"
+    if not path.exists():
+        return ""
+    try:
+        data = read_workspace_yaml(path)
+    except ValueError:
+        return ""
+    return str(data.get("demand_name", "")).strip()
 
 
 def expand_vars(value: str, config: dict[str, object]) -> str:

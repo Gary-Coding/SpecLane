@@ -1,12 +1,10 @@
 # speclane
 
-Structured AI Delivery Workflow
+结构化 AI 工程交付工作流
 
 ## 它是什么
 
 `speclane` 是一个面向 AI 编码的工程交付工作流 skill。它把一次需求交付拆成规格、计划、实现、自查、审查、验证和归档，让 AI 不再零散写代码，而是按可追踪、可验证、可复盘的流程工作。
-
-English: SpecLane turns requirements and specs into traceable AI-delivered software changes.
 
 它支持两种入口：
 
@@ -43,6 +41,15 @@ todo 模式：
 
 ```text
 /sl:apply
+```
+
+多需求工作区：
+
+```text
+/sl:demand new demand-a
+/sl:propose add-phone-filter --demand demand-a
+/sl:bridge --demand demand-a
+/sl:apply --demand demand-a
 ```
 
 更多命令见 [docs/sl命令协议.md](docs/sl命令协议.md)。
@@ -171,6 +178,15 @@ skill 自身配置位于：
 <workspace>/.speclane/sessions/<session_id>/status.json
 ```
 
+多需求模式下，状态会隔离到：
+
+```text
+<workspace>/.speclane/demands/<demand_name>/current-session.json
+<workspace>/.speclane/demands/<demand_name>/sl-state.json
+<workspace>/.speclane/demands/<demand_name>/todo-state.json
+<workspace>/.speclane/demands/<demand_name>/sessions/<session_id>/
+```
+
 给人查看的报告：
 
 ```text
@@ -194,9 +210,9 @@ OpenSpec 模式额外产物：
 
 - [docs/sl命令协议.md](docs/sl命令协议.md)
 - [docs/中文使用手册.md](docs/中文使用手册.md)
-- [docs/English User Guide.md](docs/English%20User%20Guide.md)
 - [docs/项目架构与设计说明.md](docs/项目架构与设计说明.md)
 - [skills/speclane-rd/SKILL.md](skills/speclane-rd/SKILL.md)
+- [skills/speclane-rd/scripts/run-workflow.py](skills/speclane-rd/scripts/run-workflow.py)
 - [skills/speclane-rd/references/workflow.md](skills/speclane-rd/references/workflow.md)
 - [skills/speclane-rd/references/contracts.md](skills/speclane-rd/references/contracts.md)
 

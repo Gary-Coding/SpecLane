@@ -235,7 +235,12 @@ def read_plan_context(config: dict, session_meta: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="把当前会话执行结果回写到 OpenSpec change 目录。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
+    parser.add_argument("--demand", help="需求实例名称，用于多需求状态隔离。")
     args = parser.parse_args()
+    if getattr(args, "demand", None):
+        import os
+
+        os.environ["SPECLANE_DEMAND_NAME"] = args.demand
 
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)

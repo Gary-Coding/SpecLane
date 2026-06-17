@@ -30,7 +30,12 @@ def main() -> None:
     parser.add_argument("change_name", nargs="?", help="OpenSpec change 名称，例如 demand-addition-rate")
     parser.add_argument("--change", dest="change_name_option", help="OpenSpec change 名称，例如 demand-addition-rate")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
+    parser.add_argument("--demand", help="需求实例名称，用于多需求状态隔离。")
     args = parser.parse_args()
+    if getattr(args, "demand", None):
+        import os
+
+        os.environ["SPECLANE_DEMAND_NAME"] = args.demand
 
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)

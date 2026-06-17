@@ -1,4 +1,4 @@
 interface:
   display_name: "SpecLane RD"
-  short_description: "带定位、计划、审查和验证门禁的 todo 工程工作流"
-  default_prompt: "读取当前工作空间中的 workspace.yml，再读取 ~/.speclane/skill-config.yml，基于 todo、参考文件、代码目录和输出目录执行 discover -> plan -> implement -> self-check -> review -> verify 工作流，并为每次 plan 创建独立会话归档。"
+  short_description: "支持 OpenSpec 桥接的结构化 AI 研发交付工作流"
+  default_prompt: "读取当前工作空间中的 workspace.yml 和 ~/.speclane/skill-config.yml，通过 speclane-rd 处理 /sl:* 工作流命令，严格按 propose、bridge、plan、实现、自查、审查、验证、通知和归档状态机推进。"
