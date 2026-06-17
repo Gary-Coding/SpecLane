@@ -199,20 +199,57 @@ def test_openspec_state_and_bridge(root: Path) -> None:
             "/sl:propose demo-change",
         ],
         env=env_without_openspec,
+        check=False,
     )
-    if "final_reply_must=代码未修改。下一步只能执行 /sl:bridge。" not in propose:
-        raise AssertionError("/sl:propose did not print strict next-step constraint")
+    if propose.returncode == 0:
+        raise AssertionError("/sl:propose must not succeed before OpenSpec artifacts are completed")
+    if "propose_artifacts_valid=false" not in propose.output or "当前不能执行 /sl:bridge" not in propose.output:
+        raise AssertionError("/sl:propose should block when proposal/design/tasks/specs are missing")
+
+    blocked_bridge = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:bridge",
+        ],
+        check=False,
+    )
+    if blocked_bridge.returncode == 0 or not (
+        "缺少 OpenSpec 产物" in blocked_bridge.output
+        or "当前状态不允许执行 /sl:bridge" in blocked_bridge.output
+    ):
+        raise AssertionError("/sl:bridge should be blocked while OpenSpec artifacts are missing")
 
     change_dir = workspace / "openspec" / "changes" / "demo-change"
     (change_dir / "specs").mkdir(parents=True, exist_ok=True)
     (change_dir / "proposal.md").write_text("# Proposal\n\n增加状态查询接口。\n", encoding="utf-8")
     (change_dir / "design.md").write_text("# Design\n\n目标服务 demo-service。\n", encoding="utf-8")
+    (change_dir / "specs" / "api-status.md").write_text("# 状态接口规格\n\n接口必须返回 ok。\n", encoding="utf-8")
     (change_dir / "tasks.md").write_text(
         "# Tasks\n\n"
         "- [ ] 修改 demo-service controller 增加状态查询接口\n"
         "- [ ] 补充验证，确认接口返回 ok\n",
         encoding="utf-8",
     )
+
+    propose_done = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:propose demo-change",
+        ],
+        env=env_without_openspec,
+    )
+    if "propose_artifacts_valid=true" not in propose_done or "workflow_phase_after_completion=proposed" not in propose_done:
+        raise AssertionError("/sl:propose should succeed after OpenSpec artifacts are completed")
 
     bridge = run(
         [

@@ -17,6 +17,7 @@ from common import (
     summarize_markdown_file,
     update_sl_state,
     validate_openspec_change_name,
+    validate_openspec_change_artifacts,
     workflow_source,
     workspace_root,
     write_active_openspec_change,
@@ -154,17 +155,43 @@ def main() -> None:
             ]
         ),
     )
+    artifact_paths = {
+        "proposal": str(change_dir / "proposal.md"),
+        "design": str(change_dir / "design.md"),
+        "tasks": str(change_dir / "tasks.md"),
+        "change_dir": str(change_dir),
+        "propose_input": str(writeback_dir / "propose-input.json"),
+    }
+    validation = validate_openspec_change_artifacts(config)
+    if not validation.get("valid"):
+        update_sl_state(
+            config,
+            phase="blocked",
+            lasl_command="/sl:propose",
+            artifacts=artifact_paths,
+            blocked_reason="; ".join(str(item) for item in validation.get("errors", [])),
+        )
+        print(f"change_name={change_name}")
+        print(f"change_dir={change_dir}")
+        print(f"active_change_file={active_change_file}")
+        print(f"demand_file={demand_file or ''}")
+        print(f"demand_source_type={demand_source.get('source_type', '')}")
+        print(f"reference_files={len(reference_contexts)}")
+        print(f"openspec_cli_available={str(openspec_cli_available()).lower()}")
+        print(f"propose_input={writeback_dir / 'propose-input.json'}")
+        print("workflow_phase_after_completion=blocked")
+        print("propose_artifacts_valid=false")
+        for error in validation.get("errors", []):
+            print(f"propose_artifact_error={error}")
+        print("next_action=AI 必须根据 propose-input 读取需求并补全 proposal.md、design.md、tasks.md 和必要 specs；补全后重新执行 /sl:propose <change-name> 完成校验。")
+        print("final_reply_must=/sl:propose 尚未完成。当前不能执行 /sl:bridge。请先补全 OpenSpec change 文档。")
+        raise SystemExit(1)
+
     update_sl_state(
         config,
         phase="proposed",
         lasl_command="/sl:propose",
-        artifacts={
-            "proposal": str(change_dir / "proposal.md"),
-            "design": str(change_dir / "design.md"),
-            "tasks": str(change_dir / "tasks.md"),
-            "change_dir": str(change_dir),
-            "propose_input": str(writeback_dir / "propose-input.json"),
-        },
+        artifacts=artifact_paths,
     )
     print(f"change_name={change_name}")
     print(f"change_dir={change_dir}")
@@ -175,6 +202,7 @@ def main() -> None:
     print(f"openspec_cli_available={str(openspec_cli_available()).lower()}")
     print(f"propose_input={writeback_dir / 'propose-input.json'}")
     print("workflow_phase_after_completion=proposed")
+    print("propose_artifacts_valid=true")
     print("allowed_next_after_completion=/sl:bridge")
     print("forbidden_next_after_completion=/sl:plan,/sl:apply")
     print("final_reply_must=代码未修改。下一步只能执行 /sl:bridge。")

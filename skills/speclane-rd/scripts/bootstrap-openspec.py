@@ -4,7 +4,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import ensure_workflow_inputs, load_workspace_config, openspec_tasks_hash, todo_path, update_sl_state, workflow_source, workspace_root
+from common import (
+    ensure_workflow_inputs,
+    load_workspace_config,
+    openspec_tasks_hash,
+    todo_path,
+    update_sl_state,
+    validate_openspec_change_artifacts,
+    workflow_source,
+    workspace_root,
+)
 
 
 def main() -> None:
@@ -27,6 +36,11 @@ def main() -> None:
             "拒绝执行桥接：bootstrap-openspec 只能由用户显式 /sl:bridge 触发。"
             "如果当前命令是 /sl:propose、/sl:init、/sl:plan 或 /sl:apply，必须停止，不能生成 todo.md。"
         )
+    validation = validate_openspec_change_artifacts(config)
+    if not validation.get("valid"):
+        for error in validation.get("errors", []):
+            print(f"propose_artifact_error={error}")
+        raise SystemExit("OpenSpec change 文档未完成，禁止 /sl:bridge。请先补全 proposal.md、design.md、tasks.md 和必要 specs 后重新执行 /sl:propose <change-name>。")
     result = ensure_workflow_inputs(config, allow_bridge_write=True)
     update_sl_state(
         config,

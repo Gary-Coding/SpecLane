@@ -1029,6 +1029,77 @@ def openspec_tasks_hash(config: dict[str, Any]) -> str:
     return file_sha256(openspec_tasks_path(config))
 
 
+def is_openspec_placeholder_text(text: str) -> bool:
+    normalized = str(text).strip()
+    if not normalized:
+        return True
+    lowered = normalized.lower()
+    markers = [
+        "待填写",
+        "待补充",
+        "当前 blocked",
+        "当前blocked",
+        "blocked",
+        "placeholder",
+        "todo",
+        "tbd",
+        "依赖 proposal",
+        "请在这里",
+        "在这里写",
+    ]
+    return any(marker in lowered for marker in markers)
+
+
+def validate_openspec_change_artifacts(config: dict[str, Any]) -> dict[str, Any]:
+    if workflow_source(config) != "openspec":
+        return {"valid": True, "errors": [], "warnings": []}
+    change_dir = openspec_change_dir(config)
+    proposal = change_dir / "proposal.md"
+    design = change_dir / "design.md"
+    tasks = openspec_tasks_path(config)
+    specs_dir = change_dir / "specs"
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    required_files = {
+        "proposal.md": proposal,
+        "design.md": design,
+        "tasks.md": tasks,
+    }
+    for label, path in required_files.items():
+        if not path.exists() or not path.is_file():
+            errors.append(f"缺少 OpenSpec 产物：{label}")
+            continue
+        text = read_text(path)
+        if is_openspec_placeholder_text(text):
+            errors.append(f"{label} 仍是占位或未完成内容")
+        if label == "tasks.md" and not re.search(r"(?m)^\s*-\s+\[[ xX]\]\s+\S+", text):
+            errors.append("tasks.md 缺少可执行任务项")
+
+    spec_files = sorted(specs_dir.rglob("*.md")) if specs_dir.exists() and specs_dir.is_dir() else []
+    valid_spec_files = [
+        path for path in spec_files
+        if path.is_file() and not is_openspec_placeholder_text(read_text(path))
+    ]
+    design_text = read_text(design)
+    no_spec_required = any(marker in design_text for marker in ("无需新增规格", "无需新增 specs", "无需新增 spec", "no new specs"))
+    if not valid_spec_files and not no_spec_required:
+        errors.append("缺少有效 specs/*.md；如确实不需要新增规格，请在 design.md 明确写明“无需新增规格”")
+    elif not valid_spec_files:
+        warnings.append("design.md 声明无需新增规格，跳过 specs 文件要求")
+
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "change_dir": str(change_dir),
+        "proposal": str(proposal),
+        "design": str(design),
+        "tasks": str(tasks),
+        "spec_count": len(valid_spec_files),
+    }
+
+
 def openspec_artifact_hashes(config: dict[str, Any]) -> dict[str, Any]:
     if workflow_source(config) != "openspec":
         return {}
