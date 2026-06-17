@@ -1,0 +1,13 @@
+version: 1
+mode: manual
+workflow_source: todo
+vars:
+  demand_name: __DEMAND_NAME__
+todo_file: demands/${demand_name}/todo.md
+reference_files:
+  - docs/需求分析与实现指南.md
+  - docs/开发规范.md
+code_path: __CODE_PATH__
+output_dir: demands/${demand_name}/output
+
+# manual 模式适合首次接入、复杂需求或需要逐步确认的团队。

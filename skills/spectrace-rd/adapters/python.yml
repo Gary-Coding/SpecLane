@@ -1,0 +1,8 @@
+id: python
+language: python
+build_tool: python
+detect_files: [pyproject.toml, requirements.txt, setup.py, setup.cfg, tox.ini, uv.lock]
+test_command: python -m pytest
+start_command: python app.py
+verify_command: python -m pytest
+review_profile: service-backend

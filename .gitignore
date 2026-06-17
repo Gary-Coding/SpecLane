@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+node_modules/
+npm-debug.log*
+*.tgz
+
+# Local workspace/runtime artifacts.
+workspace.yml
+demands/
+superengineer/
+openspec/
+.spectrace/
+.claude/
+.codex/

@@ -1,0 +1,8 @@
+id: go
+language: go
+build_tool: go
+detect_files: [go.mod]
+test_command: go test ./...
+start_command: go run .
+verify_command: go test ./...
+review_profile: service-backend

@@ -1,0 +1,8 @@
+id: java-maven
+language: java
+build_tool: maven
+detect_files: [pom.xml, mvnw]
+test_command: mvn test
+start_command: mvn spring-boot:run
+verify_command: mvn test
+review_profile: layered-backend

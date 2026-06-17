@@ -1,0 +1,21 @@
+version: 1
+mode: auto
+workflow_source: openspec
+vars:
+  demand_name: __DEMAND_NAME__
+demand_file: demands/${demand_name}/需求.md
+todo_file: demands/${demand_name}/todo.md
+reference_files:
+  - docs/需求分析与实现指南.md
+  - docs/开发规范.md
+  - docs/系统架构.md
+code_path: __CODE_PATH__
+output_dir: demands/${demand_name}/output
+openspec:
+  changes_dir: openspec/changes
+verify_commands:
+  frontend-app: pnpm test && pnpm build
+  user-service: mvn -q test
+  pricing-service: go test ./...
+
+# code_path 指向多个仓库的上层目录时，工作流会结合 todo 与代码结构推断目标仓库。

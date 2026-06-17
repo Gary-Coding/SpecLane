@@ -1,0 +1,25 @@
+version: 1
+mode: manual
+workflow_source: todo
+todo_file: todo.md
+reference_files:
+  - docs/项目介绍.md
+  - docs/开发规范.md
+code_path: ../your-project
+output_dir: output
+# 可选：自动识别不准确时覆盖验证命令
+# verify_commands:
+#   default: pnpm test && pnpm build
+#   frontend-app: pnpm test && pnpm build
+#   user-service: go test ./...
+
+# 如果使用 OpenSpec 模式，改成：
+# workflow_source: openspec
+# vars:
+#   demand_name: 7-your-demand
+# demand_file: demands/${demand_name}/需求.md
+# demand_file 也可以配置为飞书/Lark 云文档 URL，需本机已安装并授权 lark-cli。
+# todo_file: demands/${demand_name}/todo.md
+# output_dir: demands/${demand_name}/output
+# openspec:
+#   changes_dir: openspec/changes

@@ -1,0 +1,8 @@
+id: node-react
+language: typescript
+build_tool: npm
+detect_files: [next.config.js, next.config.mjs, src/App.jsx, src/App.tsx]
+test_command: npm test
+start_command: npm run dev
+verify_command: npm test
+review_profile: frontend

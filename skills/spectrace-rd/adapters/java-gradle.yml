@@ -1,0 +1,8 @@
+id: java-gradle
+language: java
+build_tool: gradle
+detect_files: [build.gradle, build.gradle.kts, gradlew]
+test_command: gradle test
+start_command: gradle bootRun
+verify_command: gradle test
+review_profile: layered-backend

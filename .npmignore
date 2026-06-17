@@ -1,0 +1,11 @@
+__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+.git/
+.github/
+node_modules/
+npm-debug.log*
+workspace.yml
+demands/
+.spectrace/

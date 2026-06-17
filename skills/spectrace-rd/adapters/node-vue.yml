@@ -1,0 +1,8 @@
+id: node-vue
+language: typescript
+build_tool: npm
+detect_files: [vue.config.js, nuxt.config.ts, src/App.vue]
+test_command: npm test
+start_command: npm run dev
+verify_command: npm test
+review_profile: frontend

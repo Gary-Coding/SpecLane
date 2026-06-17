@@ -1,0 +1,18 @@
+version: 1
+mode: auto
+workflow_source: openspec
+vars:
+  demand_name: __DEMAND_NAME__
+demand_file: demands/${demand_name}/需求.md
+todo_file: demands/${demand_name}/todo.md
+reference_files:
+  - docs/需求分析与实现指南.md
+  - docs/前端规范.md
+code_path: __CODE_PATH__
+output_dir: demands/${demand_name}/output
+openspec:
+  changes_dir: openspec/changes
+verify_commands:
+  default: pnpm test && pnpm build
+
+# 如果团队使用 npm，可把 verify_commands.default 改成 npm test && npm run build。

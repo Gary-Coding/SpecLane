@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spectrace plan",
+  "type": "object",
+  "required": [
+    "session_id",
+    "constraints",
+    "todo_progress",
+    "task_modules",
+    "task_breakdown",
+    "requirement_summary",
+    "assumptions",
+    "workspace",
+    "configured_code_path",
+    "resolved_code_path",
+    "resolved_code_paths",
+    "service_hints",
+    "service_resolution",
+    "target_codebases",
+    "reference_files_used",
+    "detected_project",
+    "impacted_modules",
+    "impacted_files",
+    "change_steps",
+    "confidence",
+    "evidence",
+    "bridge_context",
+    "acceptance_criteria",
+    "implementation_slices",
+    "test_plan",
+    "risks",
+    "unknowns"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "session_id": { "type": "string" },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "todo_progress": {
+      "type": "object",
+      "required": ["pending_task_count", "completed_task_count", "total_task_count"],
+      "additionalProperties": false,
+      "properties": {
+        "pending_task_count": { "type": "integer", "minimum": 0 },
+        "completed_task_count": { "type": "integer", "minimum": 0 },
+        "total_task_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "task_modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "tasks"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "details"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "details": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "task_breakdown": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "details"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "details": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "requirement_summary": { "type": "string" },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "workspace": { "type": "string" },
+    "configured_code_path": { "type": "string" },
+    "resolved_code_path": { "type": "string" },
+    "resolved_code_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "service_hints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "service_resolution": {
+      "type": "object",
+      "required": [
+        "configured_code_path",
+        "resolved_code_paths",
+        "service_hints",
+        "selection_reason",
+        "candidate_codebases"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "configured_code_path": { "type": "string" },
+        "resolved_code_path": { "type": "string" },
+        "resolved_code_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "service_hints": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "matched_service_hint": { "type": "string" },
+        "matched_services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["service_hint", "resolved_code_path"],
+            "additionalProperties": false,
+            "properties": {
+              "service_hint": { "type": "string" },
+              "resolved_code_path": { "type": "string" }
+            }
+          }
+        },
+        "selection_reason": { "type": "string" },
+        "candidate_codebases": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "target_codebases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "detected_project", "impacted_modules", "impacted_files"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "detected_project": {
+            "type": "object",
+            "required": ["language", "build_tool", "test_command", "start_command", "verify_command"],
+            "additionalProperties": false,
+            "properties": {
+              "language": { "type": "string" },
+              "build_tool": { "type": "string" },
+              "test_command": { "type": "string" },
+              "start_command": { "type": "string" },
+              "verify_command": { "type": "string" }
+            }
+          },
+          "impacted_modules": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "impacted_files": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "reference_files_used": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "detected_project": {
+      "type": "object",
+      "required": ["language", "build_tool", "test_command", "start_command", "verify_command"],
+      "additionalProperties": false,
+      "properties": {
+        "language": { "type": "string" },
+        "build_tool": { "type": "string" },
+        "test_command": { "type": "string" },
+        "start_command": { "type": "string" },
+        "verify_command": { "type": "string" }
+      }
+    },
+    "impacted_modules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "impacted_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "change_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "details", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "details": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "done", "blocked"]
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["codebase", "keyword", "file", "line", "snippet"],
+        "additionalProperties": false,
+        "properties": {
+          "codebase": { "type": "string" },
+          "keyword": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "snippet": { "type": "string" }
+        }
+      }
+    },
+    "bridge_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_source",
+        "change_name",
+        "change_dir",
+        "tasks_file",
+        "proposal_file",
+        "design_file",
+        "spec_reference_files",
+        "proposal_headings",
+        "design_headings",
+        "business_constraints",
+        "acceptance_criteria",
+        "compatibility_notes",
+        "spec_merge_targets",
+        "updated_at"
+      ],
+      "properties": {
+        "workflow_source": { "type": "string" },
+        "change_name": { "type": "string" },
+        "change_dir": { "type": "string" },
+        "tasks_file": { "type": "string" },
+        "proposal_file": { "type": "string" },
+        "design_file": { "type": "string" },
+        "spec_reference_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "proposal_headings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "design_headings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "business_constraints": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "compatibility_notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "spec_merge_targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["delta_source", "target", "relative_path", "target_exists", "target_sha256"],
+            "additionalProperties": false,
+            "properties": {
+              "delta_source": { "type": "string" },
+              "target": { "type": "string" },
+              "relative_path": { "type": "string" },
+              "target_exists": { "type": "boolean" },
+              "target_sha256": { "type": "string" }
+            }
+          }
+        },
+        "updated_at": { "type": "string" }
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "task_title", "checks"],
+        "additionalProperties": false,
+        "properties": {
+          "task_id": { "type": "string" },
+          "task_title": { "type": "string" },
+          "checks": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "implementation_slices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "goal", "candidate_files", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "goal": { "type": "string" },
+          "candidate_files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "done", "blocked"]
+          }
+        }
+      }
+    },
+    "test_plan": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
