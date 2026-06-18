@@ -17,9 +17,9 @@ output_dir: output
 # workflow_source: openspec
 # vars:
 #   demand_name: 7-your-demand
-# demand_file: demands/${demand_name}/需求.md
+# demand_file: demands/${demand_name}/input/需求.md
 # demand_file 也可以配置为飞书/Lark 云文档 URL，需本机已安装并授权 lark-cli。
-# todo_file: demands/${demand_name}/todo.md
-# output_dir: demands/${demand_name}/output
+# todo_file: demands/${demand_name}/spec/bridge/todo.md
+# output_dir: demands/${demand_name}/rd/output
 # openspec:
-#   changes_dir: openspec/changes
+#   changes_dir: demands/${demand_name}/spec/openspec/changes

@@ -41,7 +41,7 @@
   ],
   "scripts": {
     "setup": "python3 scripts/speclane-setup.py",
-    "check": "python3 -m py_compile scripts/speclane-cli.py scripts/speclane-setup.py scripts/speclane-smoke-test.py scripts/speclane-e2e-test.py skills/speclane-rd/scripts/*.py",
+    "check": "python3 -m py_compile scripts/speclane-cli.py scripts/speclane-setup.py scripts/speclane-smoke-test.py scripts/speclane-e2e-test.py skills/speclane/scripts/*.py",
     "smoke": "python3 scripts/speclane-smoke-test.py",
     "e2e": "python3 scripts/speclane-e2e-test.py",
     "pack:check": "npm pack --dry-run"

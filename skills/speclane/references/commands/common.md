@@ -1,6 +1,6 @@
 # `/sl:*` 公共协议
 
-`/sl:*` 是 SpecLane RD 的 AI 阶段命令，不是 shell 命令，也不是 OpenSpec `/opsx:*`。
+`/sl:*` 是 SpecLane 的 AI 阶段命令，不是 shell 命令，也不是 OpenSpec `/opsx:*`。
 
 ## 语言 / Language
 

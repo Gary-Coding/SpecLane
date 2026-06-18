@@ -30,10 +30,10 @@ def main() -> None:
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)
     if workflow_source(config) != "openspec":
-        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无需执行 bootstrap-openspec。")
+        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无需执行 openspec-bridge。")
     if not args.explicit_sl_bridge:
         raise SystemExit(
-            "拒绝执行桥接：bootstrap-openspec 只能由用户显式 /sl:bridge 触发。"
+            "拒绝执行桥接：openspec-bridge 只能由用户显式 /sl:bridge 触发。"
             "如果当前命令是 /sl:propose、/sl:init、/sl:plan 或 /sl:apply，必须停止，不能生成 todo.md。"
         )
     validation = validate_openspec_change_artifacts(config)

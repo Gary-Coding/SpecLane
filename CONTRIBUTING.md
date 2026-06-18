@@ -20,9 +20,9 @@ node bin/speclane.js doctor --workspace .
 
 ## 修改原则
 
-- `skills/speclane-rd/SKILL.md` 是唯一 skill 入口，修改命令语义时必须同步更新。
-- `skills/speclane-rd/references/commands/` 是 `/sl:*` 协议说明，修改命令流程时必须同步更新。
-- `skills/speclane-rd/scripts/` 下脚本是受控执行入口，不要让 AI 通过手写状态文件绕过流程。
+- `skills/speclane/SKILL.md` 是唯一 skill 入口，修改命令语义时必须同步更新。
+- `skills/speclane/references/commands/` 是 `/sl:*` 协议说明，修改命令流程时必须同步更新。
+- `skills/speclane/scripts/` 下脚本是受控执行入口，不要让 AI 通过手写状态文件绕过流程。
 - 发布前必须检查 npm 包内容，确认没有本地工作区产物、缓存文件、密钥或个人路径。
 
 ## 发布流程

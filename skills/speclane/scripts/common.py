@@ -181,6 +181,19 @@ def _parse_yaml_block(tokens: list[tuple[int, str]], index: int, indent: int) ->
                 raise ValueError("YAML 不能在同一层混用对象和数组。")
             value_part = content[2:].strip()
             if value_part:
+                if ":" in value_part and not value_part.startswith(("'", '"')):
+                    key, _, value = value_part.partition(":")
+                    item: dict[str, Any] = {key.strip(): parse_scalar(value.strip())}
+                    next_index = index + 1
+                    if next_index < len(tokens) and tokens[next_index][0] > indent:
+                        next_index, nested = _parse_yaml_block(tokens, next_index, indent + 2)
+                        if isinstance(nested, dict):
+                            item.update(nested)
+                        else:
+                            raise ValueError("YAML 数组对象后续缩进必须是对象。")
+                    container.append(item)
+                    index = next_index
+                    continue
                 container.append(parse_scalar(value_part))
                 index += 1
                 continue
@@ -347,10 +360,6 @@ def demand_runtime_dir(root: Path | str, demand_name: str) -> Path:
     return demand_registry_dir(root) / validate_demand_name(demand_name)
 
 
-def demand_instance_path(root: Path | str, demand_name: str) -> Path:
-    return demand_runtime_dir(root, demand_name) / "demand.yml"
-
-
 def active_demand_path(root: Path | str) -> Path:
     return Path(str(root)).resolve() / ".speclane" / "active-demand.yml"
 
@@ -388,18 +397,46 @@ def configured_demand_name(config: dict[str, Any]) -> str:
     return ""
 
 
+def workspace_demands(raw_config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    demands = raw_config.get("demands", {})
+    if demands in ("", None):
+        return {}
+    if not isinstance(demands, list):
+        raise ValueError("workspace.yml 中的 demands 必须是数组，每项包含 name 和 desc。")
+    normalized: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(demands, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"workspace.yml 中的 demands[{index}] 必须是对象。")
+        name = validate_demand_name(str(item.get("name", "")).strip())
+        if name in normalized:
+            raise ValueError(f"workspace.yml 中 demands 存在重复需求名称：{name}")
+        normalized[name] = dict(item)
+    return normalized
+
+
 def resolve_requested_demand(root: Path, raw_config: dict[str, Any], explicit_demand: str | None = None) -> str:
+    demands = workspace_demands(raw_config)
     requested = str(explicit_demand or "").strip() or str(os.environ.get("SPECLANE_DEMAND_NAME", "")).strip()
     if requested:
-        return validate_demand_name(requested)
+        selected = validate_demand_name(requested)
+        if demands and selected not in demands:
+            raise ValueError(f"workspace.yml 中不存在需求配置：demands[].name={selected}")
+        return selected
     active = read_active_demand(root)
     if active:
-        return validate_demand_name(active)
+        selected = validate_demand_name(active)
+        if demands and selected not in demands:
+            raise ValueError(f"当前 active demand 不存在于 workspace.yml.demands：{selected}")
+        return selected
     vars_map = raw_config.get("vars", {})
     if isinstance(vars_map, dict):
         configured = str(vars_map.get("demand_name", "")).strip()
-        if configured and demand_instance_path(root, configured).exists():
-            return validate_demand_name(configured)
+        if configured:
+            selected = validate_demand_name(configured)
+            if not demands or selected in demands:
+                return selected
+    if len(demands) == 1:
+        return next(iter(demands))
     return ""
 
 
@@ -414,21 +451,23 @@ def apply_demand_defaults(config: dict[str, Any], demand_name: str) -> dict[str,
     for key in ("workflow_source", "mode", "demand_file", "todo_file", "output_dir", "reference_files"):
         if key in defaults and config.get(key) in ("", None, [], {}):
             config[key] = defaults[key]
-    config.setdefault("demand_file", f"demands/{demand_name}/需求.md")
-    config.setdefault("todo_file", f"demands/{demand_name}/todo.md")
-    config.setdefault("output_dir", f"demands/{demand_name}/output")
+    config.setdefault("demand_file", f"demands/{demand_name}/input/需求.md")
+    config.setdefault("todo_file", f"demands/{demand_name}/spec/bridge/todo.md")
+    config.setdefault("output_dir", f"demands/{demand_name}/rd/output")
     return config
 
 
-def load_demand_instance(root: Path, demand_name: str) -> dict[str, Any]:
+def load_workspace_demand_config(raw_config: dict[str, Any], demand_name: str) -> dict[str, Any]:
     if not demand_name:
         return {}
-    path = demand_instance_path(root, demand_name)
-    if not path.exists():
+    demands = workspace_demands(raw_config)
+    if not demands:
         return {}
-    loaded = parse_simple_yaml(path.read_text(encoding="utf-8"))
+    loaded = demands.get(demand_name, {})
+    if loaded in ("", None):
+        loaded = {}
     if not isinstance(loaded, dict):
-        raise ValueError(f"需求实例配置必须是对象：{path}")
+        raise ValueError(f"workspace.yml 中的 demands.{demand_name} 必须是对象。")
     return loaded
 
 
@@ -571,14 +610,15 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
     if not isinstance(raw_config, dict):
         raise ValueError("workspace.yml 顶层必须是对象。")
     demand_name = resolve_requested_demand(root, raw_config)
-    demand_config = load_demand_instance(root, demand_name)
+    demand_config = load_workspace_demand_config(raw_config, demand_name)
     merged_raw = dict(raw_config)
     if demand_config:
         for key, value in demand_config.items():
-            if key in ("version",):
+            if key in ("version", "name", "desc"):
                 continue
             merged_raw[key] = value
     if demand_name:
+        merged_raw.pop("demands", None)
         vars_map = dict(merged_raw.get("vars", {}) if isinstance(merged_raw.get("vars", {}), dict) else {})
         vars_map["demand_name"] = demand_name
         merged_raw["vars"] = vars_map
@@ -660,7 +700,10 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
             if configured_change_dir is not None:
                 changes_dir = configured_change_dir if configured_change_dir.name == "changes" else configured_change_dir.parent
             else:
-                changes_dir = (root / "openspec" / "changes").resolve()
+                if demand_name:
+                    changes_dir = (root / "demands" / demand_name / "spec" / "openspec" / "changes").resolve()
+                else:
+                    changes_dir = (root / "openspec" / "changes").resolve()
 
         def usable_change_name(candidate: str, require_existing_dir: bool) -> str:
             normalized = str(candidate).strip()
@@ -708,7 +751,7 @@ def load_workspace_config(workspace: Path | None = None) -> dict[str, Any]:
     config["notification"] = skill_config.get("notification", {})
     config["__workspace_root"] = str(root)
     config["__demand_name"] = demand_name
-    config["__demand_instance_path"] = str(demand_instance_path(root, demand_name)) if demand_name else ""
+    config["__demand_config_source"] = f"{config_path}#demands.{demand_name}" if demand_name else ""
     config["__config_path"] = str(config_path)
     config["__skill_root"] = str(skill_root())
     config["__skill_config_path"] = str(skill_config_path())
@@ -942,29 +985,29 @@ TODO_PHASE_ALLOWED_NEXT: dict[str, list[str]] = {
 
 RUN_COMMAND_TO_SL_COMMAND: dict[str, str] = {
     "route-sl": "",
-    "propose-openspec": "/sl:propose",
-    "bootstrap-openspec": "/sl:bridge",
+    "openspec-propose": "/sl:propose",
+    "openspec-bridge": "/sl:bridge",
     "plan": "/sl:plan",
     "apply": "/sl:apply",
     "start-implement": "/sl:apply",
     "finish-implement": "/sl:apply",
     "review": "/sl:review",
     "verify": "/sl:verify",
-    "prepare-archive-openspec": "/sl:archive-check",
-    "archive-openspec": "/sl:archive",
+    "openspec-archive-check": "/sl:archive-check",
+    "openspec-archive": "/sl:archive",
 }
 
 
 SL_COMMAND_TO_RUN_COMMAND: dict[str, str] = {
     "/sl:init": "init",
-    "/sl:propose": "propose-openspec",
-    "/sl:bridge": "bootstrap-openspec",
+    "/sl:propose": "openspec-propose",
+    "/sl:bridge": "openspec-bridge",
     "/sl:plan": "plan",
     "/sl:apply": "apply",
     "/sl:review": "review",
     "/sl:verify": "verify",
-    "/sl:archive-check": "prepare-archive-openspec",
-    "/sl:archive": "archive-openspec",
+    "/sl:archive-check": "openspec-archive-check",
+    "/sl:archive": "openspec-archive",
     "/sl:status": "status",
     "/sl:recover": "recover",
     "/sl:demand": "demand",
@@ -1424,7 +1467,7 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         phase, status, session_meta = _status_phase_for_todo(config)
         allowed_next = TODO_PHASE_ALLOWED_NEXT.get(phase, [])
         errors: list[str] = []
-        if run_command in ("propose-openspec", "bootstrap-openspec", "prepare-archive-openspec", "archive-openspec"):
+        if run_command in ("openspec-propose", "openspec-bridge", "openspec-archive-check", "openspec-archive"):
             errors.append("当前是 todo 模式，不能执行 OpenSpec 专属命令。")
         elif run_command in ("plan", "apply"):
             if not todo_path(config).exists():
@@ -3310,7 +3353,7 @@ def feishu_sign(secret: str, timestamp: str) -> str:
 
 
 def _workflow_notification_title(session_id: str, overall_result: str) -> str:
-    return "SpecLane RD workflow notification"
+    return "SpecLane workflow notification"
 
 
 def _workflow_notification_status_text(status: dict[str, Any], overall_result: str) -> str:

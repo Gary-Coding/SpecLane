@@ -3,15 +3,15 @@ mode: auto
 workflow_source: openspec
 vars:
   demand_name: __DEMAND_NAME__
-demand_file: demands/${demand_name}/需求.md
-todo_file: demands/${demand_name}/todo.md
+demand_file: demands/${demand_name}/input/需求.md
+todo_file: demands/${demand_name}/spec/bridge/todo.md
 reference_files:
   - docs/需求分析与实现指南.md
   - docs/前端规范.md
 code_path: __CODE_PATH__
-output_dir: demands/${demand_name}/output
+output_dir: demands/${demand_name}/rd/output
 openspec:
-  changes_dir: openspec/changes
+  changes_dir: demands/${demand_name}/spec/openspec/changes
 verify_commands:
   default: pnpm test && pnpm build
 

@@ -41,7 +41,7 @@ def main() -> None:
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)
     if workflow_source(config) != "openspec":
-        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无法执行 propose-openspec。")
+        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无法执行 openspec-propose。")
 
     explicit_change_name = args.change_name_option or args.change_name
     if not explicit_change_name:

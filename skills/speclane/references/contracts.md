@@ -25,9 +25,9 @@
 
 ## 归档顺序
 
-1. `writeback-openspec`
-2. `prepare-archive-openspec`
-3. `archive-openspec`
+1. `openspec-writeback`
+2. `openspec-archive-check`
+3. `openspec-archive`
 
 ## 归档前置条件
 

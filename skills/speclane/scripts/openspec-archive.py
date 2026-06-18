@@ -68,7 +68,7 @@ def main() -> None:
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)
     if workflow_source(config) != "openspec":
-        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无需执行 archive-openspec。")
+        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无需执行 openspec-archive。")
 
     change_dir = openspec_change_dir(config)
     writeback_dir = openspec_writeback_dir(config)

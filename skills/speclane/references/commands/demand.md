@@ -25,19 +25,20 @@
 ## 产物
 
 - `.speclane/active-demand.yml`
-- `.speclane/demands/<demand-name>/demand.yml`
+- `workspace.yml` 中的 `demands[]`
 - `.speclane/demands/<demand-name>/current-session.json`
 - `.speclane/demands/<demand-name>/todo-state.json` 或 `sl-state.json`
 - `.speclane/demands/<demand-name>/sessions/<session_id>/`
-- `demands/<demand-name>/todo.md`
-- `demands/<demand-name>/output/<session_id>/`
+- `demands/<demand-name>/spec/bridge/todo.md`
+- `demands/<demand-name>/rd/output/<session_id>/`
 
 ## 约束
 
-- 需求实例配置使用 YAML：`.speclane/demands/<demand-name>/demand.yml`。
+- 需求实例配置统一写在 `workspace.yml` 的 `demands[]` 下，每项使用 `name` 标识需求。
+- `.speclane/demands/<demand-name>/` 只存放状态、session、锁等机器运行态。
 - 同一需求内部仍然串行执行，由该需求自己的 `workflow.lock` 保护。
 - 不同需求可以交错推进，但 AI 每次只能处理一个明确 demand。
 - 未显式 `--demand` 时，脚本优先使用 `.speclane/active-demand.yml`。
-- 没有 active demand 且没有显式 `--demand` 时，保持旧单需求工作区行为。
+- 没有 active demand 且没有显式 `--demand` 时，如果 `workspace.yml.demands[]` 只有一个需求，脚本会自动选择该需求；多于一个需求时必须显式选择。
 
 最终回复只说明当前 demand、动作结果、配置路径和允许的下一步。

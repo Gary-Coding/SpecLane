@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "skills"
-RD_SKILL_DIR = SKILLS_ROOT / "speclane-rd"
+SKILL_DIR = SKILLS_ROOT / "speclane"
 PACKAGE_JSON = REPO_ROOT / "package.json"
 TEMPLATE_DIR = REPO_ROOT / "templates" / "workspaces"
 
@@ -36,7 +36,7 @@ description: SpecLane：生成或完善 OpenSpec change
 argument-hint: <change-name>
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:propose $ARGUMENTS`。
+请使用 SpecLane skill 执行：`/sl:propose $ARGUMENTS`。
 如果 `$ARGUMENTS` 为空，请先询问用户提供 OpenSpec change 名称。
 """,
     "propose-fix.md": """---
@@ -44,53 +44,53 @@ description: SpecLane：需求补充后修正当前 OpenSpec change
 argument-hint: <change-name>
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:propose $ARGUMENTS`。
+请使用 SpecLane skill 执行：`/sl:propose $ARGUMENTS`。
 当前需求有补充，请修正当前 OpenSpec change；不要创建新的 change，不要改代码。
 """,
     "bridge.md": """---
 description: SpecLane：生成桥接 todo
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:bridge`。
+请使用 SpecLane skill 执行：`/sl:bridge`。
 生成桥接 todo 并总结待审核项，不要改代码，不要进入实现。
 """,
     "plan.md": """---
 description: SpecLane：只生成实施计划
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:plan`。
+请使用 SpecLane skill 执行：`/sl:plan`。
 只生成计划，不要改代码。
 """,
     "apply.md": """---
 description: SpecLane：审核 todo 后进入交付阶段
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:apply`。
+请使用 SpecLane skill 执行：`/sl:apply`。
 我已审核当前桥接 todo，可以进入交付阶段。
 """,
     "archive-check.md": """---
 description: SpecLane：检查 OpenSpec 归档条件
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:archive-check`。
+请使用 SpecLane skill 执行：`/sl:archive-check`。
 """,
     "archive.md": """---
 description: SpecLane：归档 OpenSpec change
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:archive`。
+请使用 SpecLane skill 执行：`/sl:archive`。
 """,
     "status.md": """---
 description: SpecLane：查看工作流状态
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:status`。
+请使用 SpecLane skill 执行：`/sl:status`。
 """,
     "recover.md": """---
 description: SpecLane：从标准产物恢复工作流状态
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:recover`。
+请使用 SpecLane skill 执行：`/sl:recover`。
 只恢复和诊断状态，不要改代码。
 """,
     "demand.md": """---
@@ -98,7 +98,7 @@ description: SpecLane：管理多需求实例
 argument-hint: new|use|list|status <demand-name>
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:demand $ARGUMENTS`。
+请使用 SpecLane skill 执行：`/sl:demand $ARGUMENTS`。
 只管理需求实例和当前 active demand，不要改业务代码。
 """,
 }
@@ -242,7 +242,7 @@ def skills_base(kind: str) -> Path:
 
 
 def install_skill_set(skills_root: Path, force: bool) -> None:
-    copy_skill_dir(RD_SKILL_DIR, skills_root / "speclane-rd", force=force)
+    copy_skill_dir(SKILL_DIR, skills_root / "speclane", force=force)
 
 
 def copy_skill_dir(source: Path, target: Path, force: bool) -> None:
@@ -290,8 +290,24 @@ def copy_template(name: str, workspace: Path, demand_name: str, code_path: str, 
         raise SystemExit(f"workspace.yml 已存在：{target}。如需覆盖请加 --force。")
     target.write_text(render_template(name, demand_name=demand_name, code_path=code_path), encoding="utf-8")
     (workspace / "docs").mkdir(parents=True, exist_ok=True)
-    (workspace / "demands" / demand_name).mkdir(parents=True, exist_ok=True)
+    ensure_demand_stage_dirs(workspace, demand_name)
     print(f"✓ 已写入模板：{target}")
+
+
+def ensure_demand_stage_dirs(workspace: Path, demand_name: str) -> None:
+    demand_dir = workspace / "demands" / demand_name
+    for directory in (
+        demand_dir / "input",
+        demand_dir / "input" / "references",
+        demand_dir / "pm",
+        demand_dir / "spec" / "openspec" / "changes",
+        demand_dir / "spec" / "openspec" / "specs",
+        demand_dir / "spec" / "bridge",
+        demand_dir / "rd" / "output",
+        demand_dir / "qa",
+        demand_dir / "archive",
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def doctor(workspace: Path, output_json: bool, fix: bool = False) -> int:
@@ -304,7 +320,7 @@ def doctor(workspace: Path, output_json: bool, fix: bool = False) -> int:
     add_check(checks, "python", "ok", sys.version.split()[0])
     add_check(checks, "node", "ok" if shutil.which("node") else "fail", shutil.which("node") or "未安装")
     add_check(checks, "npm", "ok" if shutil.which("npm") else "fail", shutil.which("npm") or "未安装")
-    add_check(checks, "skill_source", "ok" if RD_SKILL_DIR.exists() else "fail", str(RD_SKILL_DIR))
+    add_check(checks, "skill_source", "ok" if SKILL_DIR.exists() else "fail", str(SKILL_DIR))
     add_install_checks(checks, "codex", skills_base("codex"))
     add_install_checks(checks, "claude", skills_base("claude"))
     add_check(checks, "openspec_cli", "ok" if shutil.which("openspec") else "warn", shutil.which("openspec") or "未安装")
@@ -318,8 +334,6 @@ def doctor(workspace: Path, output_json: bool, fix: bool = False) -> int:
             "ok" if commands_ready_for_target(workspace, platform_name) else "warn",
             str(target_dir),
         )
-    add_check(checks, "workspace.openspec.root", "ok" if (workspace / "openspec").exists() else "warn", str(workspace / "openspec"))
-
     workspace_yml = workspace / "workspace.yml"
     add_check(checks, "workspace_yml", "ok" if workspace_yml.exists() else "fail", str(workspace_yml))
     if workspace_yml.exists():
@@ -363,8 +377,8 @@ def commands_ready_for_target(workspace: Path, target: str) -> bool:
 
 def add_install_checks(checks: list[dict[str, str]], name: str, base: Path) -> None:
     required = [
-        base / "speclane-rd" / "SKILL.md",
-        base / "speclane-rd" / "scripts" / "run-workflow.py",
+        base / "speclane" / "SKILL.md",
+        base / "speclane" / "scripts" / "run-workflow.py",
     ]
     status = "ok" if all(path.exists() for path in required) else "warn"
     add_check(checks, f"{name}_skills", status, str(base))
@@ -409,8 +423,6 @@ def doctor_suggestions(checks: list[dict[str, str]]) -> list[str]:
         suggestions.append("执行 `speclane init` 初始化工作区，或用 `speclane template copy <模板名>` 生成 workspace.yml。")
     if by_name.get("openspec_cli", {}).get("status") != "ok":
         suggestions.append("OpenSpec 模式建议先安装并初始化 OpenSpec；todo 模式可忽略。")
-    if by_name.get("workspace.openspec.root", {}).get("status") != "ok":
-        suggestions.append("OpenSpec 模式请在工作区执行 OpenSpec 初始化；todo 模式可忽略。")
     if by_name.get("node", {}).get("status") != "ok" or by_name.get("npm", {}).get("status") != "ok":
         suggestions.append("请先安装 Node.js/npm。")
     return suggestions
@@ -432,7 +444,7 @@ def read_workspace_yaml(path: Path) -> dict[str, object]:
             raise ValueError("workspace.yml 顶层必须是对象")
         return loaded
 
-    common_path = RD_SKILL_DIR / "scripts" / "common.py"
+    common_path = SKILL_DIR / "scripts" / "common.py"
     spec = importlib.util.spec_from_file_location("st_common_for_cli", common_path)
     if spec is None or spec.loader is None:
         raise ValueError(f"无法加载 YAML 解析器：{common_path}")
@@ -482,7 +494,7 @@ def validate_workspace(checks: list[dict[str, str]], workspace: Path, config: di
 
     code_path = config_str(config, "code_path")
     if code_path:
-        resolved = resolve_workspace_path(workspace, code_path)
+        resolved = resolve_workspace_path(workspace, expand_vars(code_path, config))
         add_check(checks, "code_path.exists", "ok" if resolved.exists() else "warn", str(resolved))
 
     demand_file = config_str(config, "demand_file")
@@ -491,8 +503,8 @@ def validate_workspace(checks: list[dict[str, str]], workspace: Path, config: di
         if demand_file:
             resolved = resolve_workspace_path(workspace, expand_vars(demand_file, config))
             add_check(checks, "demand_file.exists", "ok" if resolved.exists() else "warn", str(resolved))
-        changes_dir = config_str(config, "openspec.changes_dir", "openspec/changes")
-        resolved_changes = resolve_workspace_path(workspace, changes_dir)
+        changes_dir = config_str(config, "openspec.changes_dir", "demands/${demand_name}/spec/openspec/changes")
+        resolved_changes = resolve_workspace_path(workspace, expand_vars(changes_dir, config))
         add_check(checks, "openspec.changes_dir", "ok" if resolved_changes.exists() else "warn", str(resolved_changes))
 
     todo_file = config_str(config, "todo_file")
@@ -505,14 +517,21 @@ def validate_workspace(checks: list[dict[str, str]], workspace: Path, config: di
 
 def merged_workspace_config(workspace: Path, config: dict[str, object]) -> dict[str, object]:
     demand_name = active_demand_name(workspace) or config_str(config, "vars.demand_name")
+    demands = config.get("demands", {})
+    if not demand_name and isinstance(demands, list) and len(demands) == 1 and isinstance(demands[0], dict):
+        demand_name = str(demands[0].get("name", "")).strip()
     if not demand_name:
         return config
-    demand_yml = workspace / ".speclane" / "demands" / demand_name / "demand.yml"
-    if not demand_yml.exists():
+    if not isinstance(demands, list):
         return config
-    try:
-        demand_config = read_workspace_yaml(demand_yml)
-    except ValueError:
+    demand_config = {}
+    for item in demands:
+        if isinstance(item, dict) and str(item.get("name", "")).strip() == demand_name:
+            demand_config = item
+            break
+    if not demand_config:
+        return config
+    if not isinstance(demand_config, dict):
         return config
     merged = dict(config)
     for key, value in demand_config.items():

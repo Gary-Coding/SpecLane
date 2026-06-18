@@ -11,8 +11,25 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RUN_WORKFLOW = REPO_ROOT / "skills" / "speclane-rd" / "scripts" / "run-workflow.py"
+RUN_WORKFLOW = REPO_ROOT / "skills" / "speclane" / "scripts" / "run-workflow.py"
 CLI = REPO_ROOT / "bin" / "speclane.js"
+
+
+def ensure_demand_dirs(workspace: Path, demand_name: str) -> Path:
+    demand_dir = workspace / "demands" / demand_name
+    for directory in (
+        demand_dir / "input",
+        demand_dir / "input" / "references",
+        demand_dir / "pm",
+        demand_dir / "spec" / "openspec" / "changes",
+        demand_dir / "spec" / "openspec" / "specs",
+        demand_dir / "spec" / "bridge",
+        demand_dir / "rd" / "output",
+        demand_dir / "qa",
+        demand_dir / "archive",
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+    return demand_dir
 
 
 def main() -> None:
@@ -33,7 +50,7 @@ def main() -> None:
 def test_templates_cli(root: Path) -> None:
     home = root / "home"
     workspace = root / "template-workspace"
-    init_workspace = root / "init-workspace"
+    init_workspace = root / "workspace-init"
     init_code = root / "init-code"
     init_code.mkdir(parents=True, exist_ok=True)
     init_output = run(
@@ -57,14 +74,13 @@ def test_templates_cli(root: Path) -> None:
             "--skip-openspec-init",
         ]
     )
-    if "demand_yml=created" not in init_output or "active_demand=updated" not in init_output:
-        raise AssertionError("speclane init should create initial demand.yml and active demand")
+    if "demand_config=" not in init_output or "active_demand=updated" not in init_output:
+        raise AssertionError("speclane init should create initial workspace demand config and active demand")
     init_workspace_yml = read_text(init_workspace / "workspace.yml")
-    init_demand_yml = read_text(init_workspace / ".speclane" / "demands" / "2-init-demand" / "demand.yml")
-    if "demand_defaults:" not in init_workspace_yml:
-        raise AssertionError("speclane init should create demand_defaults in workspace.yml")
-    if "demand_name: 2-init-demand" not in init_demand_yml or "code_path: ../init-code" not in init_demand_yml:
-        raise AssertionError("speclane init should persist first demand instance config")
+    if "demands:" not in init_workspace_yml or "  - name: 2-init-demand" not in init_workspace_yml:
+        raise AssertionError("speclane init should persist first demand config in workspace.yml")
+    if "code_path: ../init-code" not in init_workspace_yml:
+        raise AssertionError("speclane init should persist demand code_path in workspace.yml")
 
     output = run(["node", str(CLI), "templates"])
     if "openspec-auto" not in output or "todo-auto" not in output:
@@ -102,13 +118,13 @@ def test_templates_cli(root: Path) -> None:
     if not (workspace / ".claude" / "commands" / "sl" / "recover.md").exists():
         raise AssertionError("doctor --fix should create recover command template")
     for installed_skill in [
-        home / ".codex" / "skills" / "speclane-rd" / "SKILL.md",
-        home / ".codex" / "skills" / "speclane-rd" / "scripts" / "run-workflow.py",
-        home / ".claude" / "skills" / "speclane-rd" / "SKILL.md",
-        home / ".claude" / "skills" / "speclane-rd" / "scripts" / "run-workflow.py",
+        home / ".codex" / "skills" / "speclane" / "SKILL.md",
+        home / ".codex" / "skills" / "speclane" / "scripts" / "run-workflow.py",
+        home / ".claude" / "skills" / "speclane" / "SKILL.md",
+        home / ".claude" / "skills" / "speclane" / "scripts" / "run-workflow.py",
     ]:
         if not installed_skill.exists():
-            raise AssertionError(f"doctor --fix should install speclane-rd skill: {installed_skill}")
+            raise AssertionError(f"doctor --fix should install speclane skill: {installed_skill}")
     run(["node", str(CLI), "commands", "install", "--workspace", str(workspace), "--target", "all"])
     for command_path in [
         workspace / ".cursor" / "commands" / "sl" / "apply.md",
@@ -126,8 +142,7 @@ def test_templates_cli(root: Path) -> None:
 def test_openspec_state_and_bridge(root: Path) -> None:
     workspace = root / "openspec-workspace"
     code = root / "code" / "demo-service"
-    demand_dir = workspace / "demands" / "8-demo"
-    demand_dir.mkdir(parents=True)
+    demand_dir = ensure_demand_dirs(workspace, "8-demo")
     code.mkdir(parents=True)
     (code / "package.json").write_text(
         json.dumps(
@@ -142,9 +157,7 @@ def test_openspec_state_and_bridge(root: Path) -> None:
         encoding="utf-8",
     )
     (workspace / "docs").mkdir(parents=True)
-    (workspace / "openspec" / "changes").mkdir(parents=True)
-    (workspace / "openspec" / "specs").mkdir(parents=True)
-    (demand_dir / "需求.md").write_text(
+    (demand_dir / "input" / "需求.md").write_text(
         "# 需求\n\n为 demo-service 增加状态查询接口。\n\n## 验收\n\n- 查询接口返回 ok。\n",
         encoding="utf-8",
     )
@@ -154,15 +167,20 @@ def test_openspec_state_and_bridge(root: Path) -> None:
                 "version: 1",
                 "mode: auto",
                 "workflow_source: openspec",
-                "vars:",
-                "  demand_name: 8-demo",
-                "demand_file: demands/${demand_name}/需求.md",
-                "todo_file: demands/${demand_name}/todo.md",
                 "reference_files: []",
                 "code_path: ../code/demo-service",
-                "output_dir: demands/${demand_name}/output",
                 "openspec:",
-                "  changes_dir: openspec/changes",
+                "  changes_dir: demands/${demand_name}/spec/openspec/changes",
+                "demands:",
+                "  - name: 8-demo",
+                "    desc: 状态查询接口",
+                "    workflow_source: openspec",
+                "    mode: auto",
+                "    demand_file: demands/${demand_name}/input/需求.md",
+                "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+                "    output_dir: demands/${demand_name}/rd/output",
+                "    reference_files: []",
+                "    code_path: ../code/demo-service",
                 "",
             ]
         ),
@@ -224,7 +242,7 @@ def test_openspec_state_and_bridge(root: Path) -> None:
     ):
         raise AssertionError("/sl:bridge should be blocked while OpenSpec artifacts are missing")
 
-    change_dir = workspace / "openspec" / "changes" / "demo-change"
+    change_dir = workspace / "demands" / "8-demo" / "spec" / "openspec" / "changes" / "demo-change"
     (change_dir / "specs").mkdir(parents=True, exist_ok=True)
     (change_dir / "proposal.md").write_text("# Proposal\n\n增加状态查询接口。\n", encoding="utf-8")
     (change_dir / "design.md").write_text("# Design\n\n目标服务 demo-service。\n", encoding="utf-8")
@@ -264,7 +282,7 @@ def test_openspec_state_and_bridge(root: Path) -> None:
     )
     if "bridge_generated=true" not in bridge:
         raise AssertionError("/sl:bridge did not generate todo.md")
-    todo = read_text(workspace / "demands" / "8-demo" / "todo.md")
+    todo = read_text(workspace / "demands" / "8-demo" / "spec" / "bridge" / "todo.md")
     if "demo-change" not in todo or "demo-service" not in todo:
         raise AssertionError("bridged todo.md missing expected OpenSpec context")
 
@@ -346,7 +364,8 @@ def test_openspec_state_and_bridge(root: Path) -> None:
     )
     if "session_action=created" not in first_plan:
         raise AssertionError("first /sl:plan should create a session")
-    first_session = read_json(workspace / ".speclane" / "current-session.json")
+    demand_state_dir = workspace / ".speclane" / "demands" / "8-demo"
+    first_session = read_json(demand_state_dir / "current-session.json")
     first_session_id = first_session["session_id"]
     data_dir = Path(first_session["data_dir"])
     if not (data_dir / "discovery-summary.json").exists():
@@ -363,10 +382,10 @@ def test_openspec_state_and_bridge(root: Path) -> None:
             "/sl:plan",
         ]
     )
-    second_session = read_json(workspace / ".speclane" / "current-session.json")
+    second_session = read_json(demand_state_dir / "current-session.json")
     if "session_action=reused" not in second_plan or second_session["session_id"] != first_session_id:
         raise AssertionError("second /sl:plan should reuse the existing planning session")
-    if len(list((workspace / ".speclane" / "sessions").iterdir())) != 1:
+    if len(list((demand_state_dir / "sessions").iterdir())) != 1:
         raise AssertionError("repeated /sl:plan created an extra session")
 
     apply_output = run(
@@ -409,10 +428,10 @@ def test_openspec_state_and_bridge(root: Path) -> None:
         ],
         check=False,
     )
-    final_session = read_json(workspace / ".speclane" / "current-session.json")
+    final_session = read_json(demand_state_dir / "current-session.json")
     if blocked_plan.returncode == 0 or "不能重新执行 /sl:plan" not in blocked_plan.output:
         raise AssertionError("/sl:plan during active delivery should be rejected")
-    if final_session["session_id"] != first_session_id or len(list((workspace / ".speclane" / "sessions").iterdir())) != 1:
+    if final_session["session_id"] != first_session_id or len(list((demand_state_dir / "sessions").iterdir())) != 1:
         raise AssertionError("rejected /sl:plan should not create or switch sessions")
 
 
@@ -436,13 +455,25 @@ def test_multi_demand_state_isolation(root: Path) -> None:
                 "mode: auto",
                 "workflow_source: todo",
                 "code_path: ../multi-code",
-                "demand_defaults:",
-                "  workflow_source: todo",
-                "  mode: auto",
-                "  todo_file: demands/${demand_name}/todo.md",
-                "  demand_file: demands/${demand_name}/需求.md",
-                "  output_dir: demands/${demand_name}/output",
-                "  reference_files: []",
+                "demands:",
+                "  - name: demand-a",
+                "    desc: 服务 A 状态检查",
+                "    workflow_source: todo",
+                "    mode: auto",
+                "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+                "    demand_file: demands/${demand_name}/input/需求.md",
+                "    output_dir: demands/${demand_name}/rd/output",
+                "    reference_files: []",
+                "    code_path: ../multi-code/service-a",
+                "  - name: demand-b",
+                "    desc: 服务 B 状态检查",
+                "    workflow_source: todo",
+                "    mode: auto",
+                "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+                "    demand_file: demands/${demand_name}/input/需求.md",
+                "    output_dir: demands/${demand_name}/rd/output",
+                "    reference_files: []",
+                "    code_path: ../multi-code/service-b",
                 "",
             ]
         ),
@@ -463,7 +494,7 @@ def test_multi_demand_state_isolation(root: Path) -> None:
         )
         if f"demand_name={demand}" not in out:
             raise AssertionError("/sl:demand new should create demand instance")
-        todo = workspace / "demands" / demand / "todo.md"
+        todo = workspace / "demands" / demand / "spec" / "bridge" / "todo.md"
         todo.write_text(
             "# 限制条件\n"
             f"- 修改的服务是 {service_name}\n\n"
@@ -471,25 +502,6 @@ def test_multi_demand_state_isolation(root: Path) -> None:
             f"- [ ] 为 {service_name} 增加状态检查\n",
             encoding="utf-8",
         )
-        instance = workspace / ".speclane" / "demands" / demand / "demand.yml"
-        instance.write_text(
-            "\n".join(
-                [
-                    "version: 1",
-                    f"demand_name: {demand}",
-                    "workflow_source: todo",
-                    "mode: auto",
-                    f"todo_file: demands/{demand}/todo.md",
-                    f"demand_file: demands/{demand}/需求.md",
-                    f"output_dir: demands/{demand}/output",
-                    "reference_files: []",
-                    f"code_path: ../multi-code/{service_name}",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
-
     first = run(
         [
             sys.executable,
@@ -553,8 +565,7 @@ def test_multi_demand_state_isolation(root: Path) -> None:
 def test_todo_auto_session_and_verify_compaction(root: Path) -> None:
     workspace = root / "todo-workspace"
     code = root / "todo-code" / "demo-service"
-    demand_dir = workspace / "demands" / "9-demo"
-    demand_dir.mkdir(parents=True)
+    demand_dir = ensure_demand_dirs(workspace, "9-demo")
     code.mkdir(parents=True)
     (workspace / "docs").mkdir(parents=True)
     (code / "verify.py").write_text(
@@ -582,20 +593,26 @@ def test_todo_auto_session_and_verify_compaction(root: Path) -> None:
                 "version: 1",
                 "mode: auto",
                 "workflow_source: todo",
-                "vars:",
-                "  demand_name: 9-demo",
-                "todo_file: demands/${demand_name}/todo.md",
                 "reference_files: []",
                 "code_path: ../todo-code/demo-service",
-                "output_dir: demands/${demand_name}/output",
                 "verify_commands:",
                 f"  default: {verify_command}",
+                "demands:",
+                "  - name: 9-demo",
+                "    desc: todo 自动交付测试",
+                "    workflow_source: todo",
+                "    mode: auto",
+                "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+                "    demand_file: demands/${demand_name}/input/需求.md",
+                "    output_dir: demands/${demand_name}/rd/output",
+                "    reference_files: []",
+                "    code_path: ../todo-code/demo-service",
                 "",
             ]
         ),
         encoding="utf-8",
     )
-    (demand_dir / "todo.md").write_text(
+    (demand_dir / "spec" / "bridge" / "todo.md").write_text(
         "# 限制条件\n"
         "- 修改的服务是 demo-service\n\n"
         "# 待办事项\n\n"
@@ -621,7 +638,7 @@ def test_todo_auto_session_and_verify_compaction(root: Path) -> None:
         raise AssertionError("/sl:apply did not enter implementing phase")
 
     run([sys.executable, str(RUN_WORKFLOW), "finish-implement", "--workspace", str(workspace)])
-    session = read_json(workspace / ".speclane" / "current-session.json")
+    session = read_json(workspace / ".speclane" / "demands" / "9-demo" / "current-session.json")
     data_dir = Path(session["data_dir"])
     plan_summary = read_json(data_dir / "plan-summary.json")
     verify = read_json(data_dir / "verify.json")
@@ -647,8 +664,7 @@ def test_todo_auto_session_and_verify_compaction(root: Path) -> None:
 def test_incomplete_plan_session_is_reused(root: Path) -> None:
     workspace = root / "incomplete-plan-workspace"
     code = root / "broken-code" / "not-a-project"
-    demand_dir = workspace / "demands" / "10-broken"
-    demand_dir.mkdir(parents=True)
+    demand_dir = ensure_demand_dirs(workspace, "10-broken")
     code.mkdir(parents=True)
     (workspace / "docs").mkdir(parents=True)
     (workspace / "workspace.yml").write_text(
@@ -657,18 +673,24 @@ def test_incomplete_plan_session_is_reused(root: Path) -> None:
                 "version: 1",
                 "mode: auto",
                 "workflow_source: todo",
-                "vars:",
-                "  demand_name: 10-broken",
-                "todo_file: demands/${demand_name}/todo.md",
                 "reference_files: []",
                 "code_path: ../broken-code/not-a-project",
-                "output_dir: demands/${demand_name}/output",
+                "demands:",
+                "  - name: 10-broken",
+                "    desc: 不完整计划复用测试",
+                "    workflow_source: todo",
+                "    mode: auto",
+                "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+                "    demand_file: demands/${demand_name}/input/需求.md",
+                "    output_dir: demands/${demand_name}/rd/output",
+                "    reference_files: []",
+                "    code_path: ../broken-code/not-a-project",
                 "",
             ]
         ),
         encoding="utf-8",
     )
-    (demand_dir / "todo.md").write_text(
+    (demand_dir / "spec" / "bridge" / "todo.md").write_text(
         "# 限制条件\n"
         "- 修改的服务是 broken-service\n\n"
         "# 待办事项\n\n"
@@ -690,10 +712,11 @@ def test_incomplete_plan_session_is_reused(root: Path) -> None:
     )
     if first_apply.returncode == 0 or "未找到可识别的项目目录" not in first_apply.output:
         raise AssertionError("first /sl:apply should fail before plan is generated")
-    current = read_json(workspace / ".speclane" / "current-session.json")
+    demand_state_dir = workspace / ".speclane" / "demands" / "10-broken"
+    current = read_json(demand_state_dir / "current-session.json")
     first_session_id = current["session_id"]
-    sessions_dir = workspace / ".speclane" / "sessions"
-    output_dir = workspace / "demands" / "10-broken" / "output"
+    sessions_dir = demand_state_dir / "sessions"
+    output_dir = workspace / "demands" / "10-broken" / "rd" / "output"
     if len(list(sessions_dir.iterdir())) != 1:
         raise AssertionError("first failed /sl:apply should create exactly one reusable data session")
     if output_dir.exists() and list(output_dir.iterdir()):
@@ -713,7 +736,7 @@ def test_incomplete_plan_session_is_reused(root: Path) -> None:
     )
     if second_apply.returncode == 0 or "session_action=reused_incomplete" not in second_apply.output:
         raise AssertionError("second /sl:apply should reuse the incomplete planning session")
-    current = read_json(workspace / ".speclane" / "current-session.json")
+    current = read_json(demand_state_dir / "current-session.json")
     if current["session_id"] != first_session_id:
         raise AssertionError("incomplete planning session should remain current")
     if len(list(sessions_dir.iterdir())) != 1:

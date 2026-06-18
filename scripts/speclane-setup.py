@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "skills"
-RD_SKILL_DIR = SKILLS_ROOT / "speclane-rd"
+SKILL_DIR = SKILLS_ROOT / "speclane"
 
 
 def main() -> None:
@@ -94,7 +94,7 @@ def prompt_args(args: argparse.Namespace) -> argparse.Namespace:
     print("")
     print("Step 1/7 环境检查")
     print(f"  Python: {sys.executable}")
-    print(f"  Skill:  {RD_SKILL_DIR}")
+    print(f"  Skill:  {SKILL_DIR}")
     print(f"  OpenSpec CLI: {'已安装' if shutil.which('openspec') else '未检测到'}")
     print("")
     print("Step 2/7 选择本机 skill 安装目标")
@@ -213,7 +213,7 @@ def skills_base(kind: str) -> Path:
 
 
 def install_skill_set(skills_root: Path, force: bool) -> None:
-    copy_skill_dir(RD_SKILL_DIR, skills_root / "speclane-rd", force)
+    copy_skill_dir(SKILL_DIR, skills_root / "speclane", force)
 
 
 def copy_skill_dir(source: Path, target: Path, force: bool) -> None:
@@ -233,9 +233,9 @@ def ensure_global_skill_config() -> None:
         print(f"skill_config=exists:{config_file}")
         return
     config_dir.mkdir(parents=True, exist_ok=True)
-    source = RD_SKILL_DIR / "assets" / "config.example.yml"
+    source = SKILL_DIR / "assets" / "config.example.yml"
     if not source.exists():
-        source = RD_SKILL_DIR / "config.example.yml"
+        source = SKILL_DIR / "config.example.yml"
     if source.exists():
         shutil.copyfile(source, config_file)
     else:
@@ -255,13 +255,25 @@ def init_workspace(
 ) -> None:
     print("Setting up SpecLane workspace")
     (workspace / "docs").mkdir(parents=True, exist_ok=True)
-    (workspace / "openspec" / "changes").mkdir(parents=True, exist_ok=True)
-    (workspace / "openspec" / "specs").mkdir(parents=True, exist_ok=True)
-    (workspace / ".speclane" / "demands").mkdir(parents=True, exist_ok=True)
     demand_dir = workspace / "demands" / demand_name
-    demand_dir.mkdir(parents=True, exist_ok=True)
+    demand_input_dir = demand_dir / "input"
+    demand_spec_dir = demand_dir / "spec"
+    demand_bridge_dir = demand_spec_dir / "bridge"
+    demand_openspec_dir = demand_spec_dir / "openspec"
+    for directory in (
+        demand_input_dir,
+        demand_input_dir / "references",
+        demand_dir / "pm",
+        demand_openspec_dir / "changes",
+        demand_openspec_dir / "specs",
+        demand_bridge_dir,
+        demand_dir / "rd" / "output",
+        demand_dir / "qa",
+        demand_dir / "archive",
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
 
-    demand_file = demand_dir / "需求.md"
+    demand_file = demand_input_dir / "需求.md"
     if not demand_file.exists():
         demand_file.write_text(
             "# 需求说明\n\n"
@@ -277,18 +289,10 @@ def init_workspace(
     else:
         print(f"demand_file=exists:{demand_file}")
 
-    todo_file = demand_dir / "todo.md"
+    todo_file = demand_bridge_dir / "todo.md"
     if source == "todo" and not todo_file.exists():
         todo_file.write_text("# 待办事项\n\n- [ ] 根据需求补充任务。\n", encoding="utf-8")
         print(f"todo_file=created:{todo_file}")
-
-    write_demand_instance(
-        workspace=workspace,
-        demand_name=demand_name,
-        code_path=code_path,
-        source=source,
-        mode=mode,
-    )
 
     workspace_yml = workspace / "workspace.yml"
     if not workspace_yml.exists():
@@ -304,6 +308,7 @@ def init_workspace(
         print(f"workspace_yml=created:{workspace_yml}")
     else:
         print(f"workspace_yml=exists:{workspace_yml}")
+    write_active_demand(workspace, demand_name)
 
     if openspec_init:
         try_init_openspec(workspace)
@@ -327,55 +332,25 @@ def build_workspace_yml(code_path: str, demand_name: str, source: str, mode: str
         f"code_path: {code_path}\n"
         "reference_files:\n"
         "  - docs/需求分析与实现指南.md\n"
-        "demand_defaults:\n"
-        f"  workflow_source: {source}\n"
-        f"  mode: {mode}\n"
-        "  demand_file: demands/${demand_name}/需求.md\n"
-        "  todo_file: demands/${demand_name}/todo.md\n"
-        "  output_dir: demands/${demand_name}/output\n"
-        "  reference_files:\n"
-        "    - docs/需求分析与实现指南.md\n"
         "openspec:\n"
-        "  changes_dir: openspec/changes\n"
+        "  changes_dir: demands/${demand_name}/spec/openspec/changes\n"
+        "demands:\n"
+        f"  - name: {demand_name}\n"
+        "    desc: 首个需求\n"
+        f"    workflow_source: {source}\n"
+        f"    mode: {mode}\n"
+        "    demand_file: demands/${demand_name}/input/需求.md\n"
+        "    todo_file: demands/${demand_name}/spec/bridge/todo.md\n"
+        "    output_dir: demands/${demand_name}/rd/output\n"
+        "    reference_files:\n"
+        "      - docs/需求分析与实现指南.md\n"
+        f"    code_path: {code_path}\n"
+        "    openspec:\n"
+        "      changes_dir: demands/${demand_name}/spec/openspec/changes\n"
     )
 
 
-def build_demand_yml(code_path: str, demand_name: str, source: str, mode: str) -> str:
-    text = (
-        "version: 1\n"
-        f"demand_name: {demand_name}\n"
-        f"workflow_source: {source}\n"
-        f"mode: {mode}\n"
-        f"demand_file: demands/{demand_name}/需求.md\n"
-        f"todo_file: demands/{demand_name}/todo.md\n"
-        f"output_dir: demands/{demand_name}/output\n"
-        "reference_files:\n"
-        "  - docs/需求分析与实现指南.md\n"
-        f"code_path: {code_path}\n"
-    )
-    if source == "openspec":
-        text += "openspec:\n  changes_dir: openspec/changes\n"
-    return text
-
-
-def write_demand_instance(workspace: Path, demand_name: str, code_path: str, source: str, mode: str) -> None:
-    demand_runtime = workspace / ".speclane" / "demands" / demand_name
-    demand_runtime.mkdir(parents=True, exist_ok=True)
-    demand_yml = demand_runtime / "demand.yml"
-    if not demand_yml.exists():
-        demand_yml.write_text(
-            build_demand_yml(
-                code_path=code_path,
-                demand_name=demand_name,
-                source=source,
-                mode=mode,
-            ),
-            encoding="utf-8",
-        )
-        print(f"demand_yml=created:{demand_yml}")
-    else:
-        print(f"demand_yml=exists:{demand_yml}")
-
+def write_active_demand(workspace: Path, demand_name: str) -> None:
     active_demand = workspace / ".speclane" / "active-demand.yml"
     active_demand.parent.mkdir(parents=True, exist_ok=True)
     active_demand.write_text(
@@ -419,7 +394,7 @@ description: SpecLane：生成或完善 OpenSpec change
 argument-hint: <change-name>
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:propose $ARGUMENTS`。
+请使用 SpecLane skill 执行：`/sl:propose $ARGUMENTS`。
 如果 `$ARGUMENTS` 为空，请先询问用户提供 OpenSpec change 名称。
 """,
     "propose-fix.md": """---
@@ -427,53 +402,53 @@ description: SpecLane：需求补充后修正当前 OpenSpec change
 argument-hint: <change-name>
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:propose $ARGUMENTS`。
+请使用 SpecLane skill 执行：`/sl:propose $ARGUMENTS`。
 当前需求有补充，请修正当前 OpenSpec change；不要创建新的 change，不要改代码。
 """,
     "bridge.md": """---
 description: SpecLane：生成桥接 todo
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:bridge`。
+请使用 SpecLane skill 执行：`/sl:bridge`。
 生成桥接 todo 并总结待审核项，不要改代码，不要进入实现。
 """,
     "plan.md": """---
 description: SpecLane：只生成实施计划
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:plan`。
+请使用 SpecLane skill 执行：`/sl:plan`。
 只生成计划，不要改代码。
 """,
     "apply.md": """---
 description: SpecLane：审核 todo 后进入交付阶段
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:apply`。
+请使用 SpecLane skill 执行：`/sl:apply`。
 我已审核当前桥接 todo，可以进入交付阶段。
 """,
     "archive-check.md": """---
 description: SpecLane：检查 OpenSpec 归档条件
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:archive-check`。
+请使用 SpecLane skill 执行：`/sl:archive-check`。
 """,
     "archive.md": """---
 description: SpecLane：归档 OpenSpec change
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:archive`。
+请使用 SpecLane skill 执行：`/sl:archive`。
 """,
     "status.md": """---
 description: SpecLane：查看当前工作流状态
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:status`。
+请使用 SpecLane skill 执行：`/sl:status`。
 """,
     "recover.md": """---
 description: SpecLane：从标准产物恢复工作流状态
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:recover`。
+请使用 SpecLane skill 执行：`/sl:recover`。
 只恢复和诊断状态，不要改代码。
 """,
     "demand.md": """---
@@ -481,7 +456,7 @@ description: SpecLane：管理多需求实例
 argument-hint: new|use|list|status <demand-name>
 ---
 
-请使用 SpecLane RD skill 执行：`/sl:demand $ARGUMENTS`。
+请使用 SpecLane skill 执行：`/sl:demand $ARGUMENTS`。
 只管理需求实例和当前 active demand，不要改业务代码。
 """,
 }
@@ -510,7 +485,7 @@ def print_summary(workspace: Path, demand_name: str, source: str, mode: str) -> 
     print("初始化完成。")
     print(f"workspace={workspace}")
     print(f"demand_dir={workspace / 'demands' / demand_name}")
-    print(f"demand_yml={workspace / '.speclane' / 'demands' / demand_name / 'demand.yml'}")
+    print(f"demand_config={workspace / 'workspace.yml'}#demands.{demand_name}")
     print(f"active_demand={demand_name}")
     print(f"workflow_source={source}")
     print(f"mode={mode}")

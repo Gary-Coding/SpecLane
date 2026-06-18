@@ -97,4 +97,4 @@ todo 模式：
 - 状态异常、中断恢复、产物不一致时，先执行 `/sl:recover`，不要猜测下一步。
 - 多需求模式下，每个需求状态位于 `.speclane/demands/<demand-name>/`，AI 禁止跨需求复用 session。
 
-AI 内部执行协议以 `skills/speclane-rd/references/commands/` 下的命令分片为准；脚本统一来自 `skills/speclane-rd/scripts/`。
+AI 内部执行协议以 `skills/speclane/references/commands/` 下的命令分片为准；脚本统一来自 `skills/speclane/scripts/`。

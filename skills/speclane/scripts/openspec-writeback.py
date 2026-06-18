@@ -245,7 +245,7 @@ def main() -> None:
     workspace = workspace_root(Path(args.workspace).expanduser() if args.workspace else None)
     config = load_workspace_config(workspace)
     if workflow_source(config) != "openspec":
-        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无需执行 writeback-openspec。")
+        raise SystemExit("当前 workspace.yml 未启用 OpenSpec 模式，无需执行 openspec-writeback。")
 
     session_meta = current_session_meta(config)
     plan = read_plan_context(config, session_meta)
@@ -318,7 +318,7 @@ def main() -> None:
 
     output_dir = openspec_writeback_dir(config)
     write_managed_json(config, output_dir / "execution-summary.json", payload)
-    write_managed_json(config, output_dir / "task-mapping.json", {"source": "run-workflow.py writeback-openspec", "items": mapping})
+    write_managed_json(config, output_dir / "task-mapping.json", {"source": "run-workflow.py openspec-writeback", "items": mapping})
     write_managed_text(config, output_dir / "execution-summary.md", build_markdown(payload))
     print(f"writeback_dir={output_dir}")
     print(f"change_dir={openspec_change_dir(config)}")

@@ -14,7 +14,6 @@ from common import (
     data_artifact_path,
     active_demand_path,
     acquire_workflow_lock,
-    demand_instance_path,
     demand_registry_dir,
     demand_runtime_dir,
     ensure_plan_can_run,
@@ -40,6 +39,7 @@ from common import (
     workflow_source,
     write_managed_json,
     write_active_demand,
+    workspace_config_path,
     workspace_root,
 )
 
@@ -335,14 +335,99 @@ def _demand_config_text(demand_name: str, workflow_source_value: str, mode: str,
         f"demand_name: {demand_name}",
         f"workflow_source: {workflow_source_value}",
         f"mode: {mode}",
-        f"demand_file: demands/{demand_name}/需求.md",
-        f"todo_file: demands/{demand_name}/todo.md",
-        f"output_dir: demands/{demand_name}/output",
+        f"demand_file: demands/{demand_name}/input/需求.md",
+        f"todo_file: demands/{demand_name}/spec/bridge/todo.md",
+        f"output_dir: demands/{demand_name}/rd/output",
         "reference_files: []",
     ]
     if change_name:
         lines.extend(["openspec:", f"  change_name: {change_name}"])
     return "\n".join(lines) + "\n"
+
+
+def workspace_demand_block(demand_name: str, workflow_source_value: str, mode: str) -> str:
+    return "\n".join(
+        [
+            f"  - name: {demand_name}",
+            "    desc: 待补充需求描述",
+            f"    workflow_source: {workflow_source_value}",
+            f"    mode: {mode}",
+            "    demand_file: demands/${demand_name}/input/需求.md",
+            "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+            "    output_dir: demands/${demand_name}/rd/output",
+            "    reference_files: []",
+            "    openspec:",
+            "      changes_dir: demands/${demand_name}/spec/openspec/changes",
+        ]
+    )
+
+
+def ensure_workspace_demand_config(root: Path, demand_name: str, workflow_source_value: str = "openspec", mode: str = "auto") -> Path:
+    path = workspace_config_path(root)
+    if not path.exists():
+        raise SystemExit(f"未找到 workspace.yml：{path}")
+    text = path.read_text(encoding="utf-8")
+    if re_search_demand_block(text, demand_name):
+        return path
+    block = workspace_demand_block(demand_name, workflow_source_value, mode)
+    if "\ndemands:" in text or text.startswith("demands:"):
+        if not text.endswith("\n"):
+            text += "\n"
+        text += block + "\n"
+    else:
+        if not text.endswith("\n"):
+            text += "\n"
+        text += "\ndemands:\n" + block + "\n"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def re_search_demand_block(text: str, demand_name: str) -> bool:
+    import re
+
+    return bool(re.search(rf"(?m)^\s+(?:-\s*)?name:\s*{re.escape(demand_name)}\s*$", text))
+
+
+def workspace_demands_for_cli(workspace_config: dict) -> dict[str, dict]:
+    raw = workspace_config.get("demands", {}) if isinstance(workspace_config, dict) else {}
+    if raw in ("", None):
+        return {}
+    if not isinstance(raw, list):
+        raise SystemExit("workspace.yml 中的 demands 必须是数组。")
+    result: dict[str, dict] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        if name:
+            result[name] = item
+    return result
+
+
+def update_workspace_demand_desc(workspace_yml: Path, demand_name: str, desc: str) -> None:
+    lines = workspace_yml.read_text(encoding="utf-8").splitlines()
+    in_target = False
+    inserted = False
+    output: list[str] = []
+    for line in lines:
+        if line.strip() in (f"name: {demand_name}", f"- name: {demand_name}"):
+            in_target = True
+            inserted = False
+            output.append(line)
+            continue
+        if in_target and line.startswith("  -"):
+            if not inserted:
+                output.append(f"    desc: {desc}")
+            in_target = False
+        if in_target and line.strip().startswith("desc:"):
+            if not inserted:
+                output.append(f"    desc: {desc}")
+                inserted = True
+            continue
+        output.append(line)
+    if in_target and not inserted:
+        output.append(f"    desc: {desc}")
+    workspace_yml.write_text("\n".join(output) + "\n", encoding="utf-8")
 
 
 def command_demand(workspace: Path | None, action: str, raw_text: str) -> None:
@@ -352,36 +437,52 @@ def command_demand(workspace: Path | None, action: str, raw_text: str) -> None:
     demand_arg = ""
     if len(parts) >= 3 and not parts[2].startswith("--"):
         demand_arg = parts[2]
+    demand_desc = " ".join(parts[3:]).strip() if len(parts) >= 4 else ""
     if action in ("new", "use", "status") and not demand_arg:
         raise SystemExit(f"/sl:demand {action} 需要需求名称。")
 
     if action == "new":
         demand_name = validate_demand_name(demand_arg)
         demand_dir = root / "demands" / demand_name
-        demand_dir.mkdir(parents=True, exist_ok=True)
+        demand_input_dir = demand_dir / "input"
+        demand_bridge_dir = demand_dir / "spec" / "bridge"
+        for directory in (
+            demand_input_dir,
+            demand_input_dir / "references",
+            demand_dir / "pm",
+            demand_dir / "spec" / "openspec" / "changes",
+            demand_dir / "spec" / "openspec" / "specs",
+            demand_bridge_dir,
+            demand_dir / "rd" / "output",
+            demand_dir / "qa",
+            demand_dir / "archive",
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
         demand_runtime_dir(root, demand_name).mkdir(parents=True, exist_ok=True)
-        demand_file = demand_dir / "需求.md"
-        todo_file = demand_dir / "todo.md"
+        demand_file = demand_input_dir / "需求.md"
+        todo_file = demand_bridge_dir / "todo.md"
         if not demand_file.exists():
             demand_file.write_text("# 需求说明\n\n## 背景\n\n## 目标\n\n## 验收标准\n\n- [ ] 补充验收标准。\n", encoding="utf-8")
         if not todo_file.exists():
             todo_file.write_text("# 待办事项\n\n- [ ] 根据需求补充任务。\n", encoding="utf-8")
-        instance = demand_instance_path(root, demand_name)
-        if not instance.exists():
-            instance.write_text(_demand_config_text(demand_name, "openspec", "auto"), encoding="utf-8")
+        workspace_yml = ensure_workspace_demand_config(root, demand_name)
+        if demand_desc:
+            update_workspace_demand_desc(workspace_yml, demand_name, demand_desc)
         write_active_demand(root, demand_name)
         print("demand_action=new")
         print(f"demand_name={demand_name}")
         print(f"demand_file={demand_file}")
         print(f"todo_file={todo_file}")
-        print(f"demand_config={instance}")
+        print(f"demand_config={workspace_yml}#demands.{demand_name}")
         print("active_demand=updated")
         return
 
     if action == "use":
         demand_name = validate_demand_name(demand_arg)
-        if not demand_instance_path(root, demand_name).exists():
-            raise SystemExit(f"需求实例不存在：{demand_instance_path(root, demand_name)}。请先执行 /sl:demand new {demand_name}。")
+        workspace_config = parse_simple_yaml(workspace_config_path(root).read_text(encoding="utf-8"))
+        demands = workspace_demands_for_cli(workspace_config)
+        if demand_name not in demands:
+            raise SystemExit(f"需求实例不存在：workspace.yml#demands[name={demand_name}]。请先执行 /sl:demand new {demand_name}。")
         write_active_demand(root, demand_name)
         print("demand_action=use")
         print(f"demand_name={demand_name}")
@@ -398,14 +499,17 @@ def command_demand(workspace: Path | None, action: str, raw_text: str) -> None:
             except Exception:
                 active = ""
         print(f"active_demand={active}")
-        registry = demand_registry_dir(root)
-        if not registry.exists():
+        workspace_config = parse_simple_yaml(workspace_config_path(root).read_text(encoding="utf-8"))
+        demands = workspace_demands_for_cli(workspace_config)
+        if not demands:
             print("demands=")
             return
-        names = [path.name for path in sorted(registry.iterdir()) if (path / "demand.yml").exists()]
+        names = sorted(str(name) for name in demands)
         print("demands=" + ",".join(names))
         for name in names:
-            print(f"demand.{name}.config={demand_instance_path(root, name)}")
+            desc = str(demands.get(name, {}).get("desc", "")).strip()
+            print(f"demand.{name}.desc={desc}")
+            print(f"demand.{name}.config={workspace_config_path(root)}#demands[name={name}]")
         return
 
     if action == "status":
@@ -469,26 +573,26 @@ def command_next(workspace: Path | None, timeout_seconds: int) -> None:
 
 def command_init(workspace: Path | None) -> None:
     args = scoped_workspace_args(workspace)
-    run_python("init-workspace.py", args)
+    run_python("workspace-init.py", args)
 
 
 def command_bootstrap_openspec(workspace: Path | None, *, explicit_sl_bridge: bool = False) -> None:
     if not explicit_sl_bridge:
         raise SystemExit(
-            "拒绝执行桥接：bootstrap-openspec 只能由用户显式 /sl:bridge 触发。"
+            "拒绝执行桥接：openspec-bridge 只能由用户显式 /sl:bridge 触发。"
             "请通过 route-sl --command-text '/sl:bridge' 或带 --explicit-sl-bridge 的受控入口执行。"
         )
-    require_sl_state(load_workspace_config(workspace), "bootstrap-openspec")
+    require_sl_state(load_workspace_config(workspace), "openspec-bridge")
     args = ["--explicit-sl-bridge"]
     args.extend(scoped_workspace_args(workspace))
-    run_python("bootstrap-openspec.py", args)
+    run_python("openspec-bridge.py", args)
 
 
 def command_propose_openspec(workspace: Path | None, change_name: str | None = None) -> None:
     args = scoped_workspace_args(workspace)
     if change_name:
         args.append(change_name)
-    run_python("propose-openspec.py", args)
+    run_python("openspec-propose.py", args)
     config = load_workspace_config(workspace)
     state = read_sl_state(config)
     phase = str(state.get("phase", "")).strip()
@@ -501,19 +605,19 @@ def command_propose_openspec(workspace: Path | None, change_name: str | None = N
 
 def command_writeback_openspec(workspace: Path | None) -> None:
     args = scoped_workspace_args(workspace)
-    run_python("writeback-openspec.py", args)
+    run_python("openspec-writeback.py", args)
 
 
 def command_prepare_archive_openspec(workspace: Path | None) -> None:
-    require_sl_state(load_workspace_config(workspace), "prepare-archive-openspec")
+    require_sl_state(load_workspace_config(workspace), "openspec-archive-check")
     args = scoped_workspace_args(workspace)
-    run_python("prepare-archive-openspec.py", args)
+    run_python("openspec-archive-check.py", args)
 
 
 def command_archive_openspec(workspace: Path | None) -> None:
-    require_sl_state(load_workspace_config(workspace), "archive-openspec")
+    require_sl_state(load_workspace_config(workspace), "openspec-archive")
     args = scoped_workspace_args(workspace)
-    run_python("archive-openspec.py", args)
+    run_python("openspec-archive.py", args)
 
 
 def command_plan(workspace: Path | None) -> None:
@@ -545,7 +649,7 @@ def command_plan(workspace: Path | None) -> None:
         print(f"session_id={session_meta.get('session_id', '')}")
     command_discover(workspace)
     args = scoped_workspace_args(workspace)
-    run_python("generate-smart-plan.py", args)
+    run_python("rd-plan.py", args)
     update_sl_state(
         config,
         phase="planned",
@@ -560,7 +664,7 @@ def command_plan(workspace: Path | None) -> None:
 
 def command_discover(workspace: Path | None) -> None:
     args = scoped_workspace_args(workspace)
-    run_python("generate-discovery.py", args)
+    run_python("rd-discover.py", args)
 
 
 def command_start_implement(workspace: Path | None) -> None:
@@ -587,7 +691,7 @@ def command_finish_implement(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
     require_sl_state(config, "finish-implement")
     args = scoped_workspace_args(workspace)
-    run_python("generate-self-check.py", args)
+    run_python("rd-self-check.py", args)
     update_sl_state(
         config,
         phase="self_checked",
@@ -633,7 +737,7 @@ def command_review(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
     require_sl_state(config, "review")
     args = scoped_workspace_args(workspace)
-    run_python("generate-review-report.py", args)
+    run_python("rd-review.py", args)
     update_sl_state(
         config,
         phase="reviewed",
@@ -644,7 +748,7 @@ def command_review(workspace: Path | None) -> None:
         },
     )
     if workflow_source(config) == "openspec":
-        run_python("writeback-openspec.py", args)
+        run_python("openspec-writeback.py", args)
 
 
 def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = False) -> None:
@@ -654,7 +758,7 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
     if force:
         args.append("--force")
     args.extend(scoped_workspace_args(workspace))
-    run_python("run-verify-and-report.py", args)
+    run_python("rd-verify.py", args)
     verify_result = read_json(data_artifact_path(config, "verify.json"), {})
     status_result = read_json(data_artifact_path(config, "status.json"), {})
     result_text = str(verify_result.get("result", "")).strip()
@@ -674,7 +778,7 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
         blocked_reason="" if next_phase in ("verified", "done") else result_text or status_result.get("current_task", "") or "验证未通过",
     )
     if workflow_source(config) == "openspec":
-        run_python("writeback-openspec.py", scoped_workspace_args(workspace))
+        run_python("openspec-writeback.py", scoped_workspace_args(workspace))
 
 
 def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
@@ -703,15 +807,15 @@ def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="speclane 统一工作流入口。")
-    parser.add_argument("command", choices=["route-sl", "route-check", "init", "propose-openspec", "bootstrap-openspec", "writeback-openspec", "prepare-archive-openspec", "archive-openspec", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "status", "recover", "next", "validate-state", "assert-standard-session"])
-    parser.add_argument("change_name", nargs="?", help="配合 propose-openspec 或 validate-state 使用。")
+    parser.add_argument("command", choices=["route-sl", "route-check", "init", "openspec-propose", "openspec-bridge", "openspec-writeback", "openspec-archive-check", "openspec-archive", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "status", "recover", "next", "validate-state", "assert-standard-session"])
+    parser.add_argument("change_name", nargs="?", help="配合 openspec-propose 或 validate-state 使用。")
     parser.add_argument("--command-text", help="配合 route-sl 使用，传入完整 /sl:* 命令文本。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
     parser.add_argument("--demand", help="需求实例名称，用于多需求状态隔离。")
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--force", action="store_true", help="配合 verify 使用，强制重跑验证并覆盖结果。")
     parser.add_argument("--json", action="store_true", help="输出机器可读摘要。")
-    parser.add_argument("--explicit-sl-bridge", action="store_true", help="确认本次 bootstrap-openspec 来自用户显式 /sl:bridge 命令。")
+    parser.add_argument("--explicit-sl-bridge", action="store_true", help="确认本次 openspec-bridge 来自用户显式 /sl:bridge 命令。")
     args = parser.parse_args()
     if getattr(args, "demand", None):
         import os
@@ -726,15 +830,15 @@ def main() -> None:
         command_route_check(workspace, args.command_text or args.change_name)
     elif args.command == "init":
         command_init(workspace)
-    elif args.command == "propose-openspec":
+    elif args.command == "openspec-propose":
         command_propose_openspec(workspace, args.change_name)
-    elif args.command == "bootstrap-openspec":
+    elif args.command == "openspec-bridge":
         command_bootstrap_openspec(workspace, explicit_sl_bridge=args.explicit_sl_bridge)
-    elif args.command == "writeback-openspec":
+    elif args.command == "openspec-writeback":
         command_writeback_openspec(workspace)
-    elif args.command == "prepare-archive-openspec":
+    elif args.command == "openspec-archive-check":
         command_prepare_archive_openspec(workspace)
-    elif args.command == "archive-openspec":
+    elif args.command == "openspec-archive":
         command_archive_openspec(workspace)
     elif args.command == "discover":
         command_discover(workspace)
@@ -747,7 +851,7 @@ def main() -> None:
     elif args.command == "finish-implement":
         command_finish_implement(workspace)
     elif args.command == "self-check":
-        run_python("generate-self-check.py", scoped_workspace_args(workspace))
+        run_python("rd-self-check.py", scoped_workspace_args(workspace))
     elif args.command == "review":
         command_review(workspace)
     elif args.command == "verify":
