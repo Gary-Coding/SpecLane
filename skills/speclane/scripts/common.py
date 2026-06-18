@@ -2,125 +2,62 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any
 
-from lib.artifact_guard import assert_managed_artifact, write_managed_json, write_managed_text
-from lib.references import existing_reference_files
-from lib.todo import (
-    constraint_items,
-    ensure_workflow_inputs,
-    extract_todo_keywords,
-    is_constraint_section,
-    is_task_section,
-    is_todo_template_placeholder,
-    normalize_todo_text_item,
-    parse_task_blocks,
-    parse_task_modules,
-    parse_todo_document,
-    parse_todo_sections,
-    service_hints,
-    summarize_todo,
-    todo_items,
-    todo_progress,
-    todo_template,
-)
-from lib.workspace import (
-    active_demand_path,
-    apply_demand_defaults,
-    configured_demand_name,
-    default_skill_config,
-    default_skill_config_text,
-    demand_registry_dir,
-    demand_runtime_dir,
-    ensure_user_skill_config,
-    expand_workspace_variables,
-    load_skill_config,
-    load_workspace_config,
-    load_workspace_demand_config,
-    normalize_verify_commands,
-    read_active_demand,
-    resolve_requested_demand,
-    resolve_workspace_path,
-    skill_config_example_path,
-    skill_config_path,
-    skill_root,
-    user_skill_config_dir,
-    validate_demand_name,
-    workspace_config_path,
-    workspace_demands,
-    workspace_root,
-    write_active_demand,
-)
-from lib.lock import (
-    acquire_workflow_lock,
-    process_is_running,
-    release_workflow_lock,
-    workflow_lock_path,
-)
-from lib.lark import (
-    demand_path,
-    is_lark_doc_url,
-    is_url,
-    lark_cli_available,
-    lark_cli_install_message,
-    read_demand_source,
-    read_lark_doc_demand,
-)
+from lib.artifact_guard import write_managed_json, write_managed_text
 from lib.io_utils import (
-    compact_text_excerpt,
     file_sha256,
-    markdown_headings,
     read_json,
     read_text,
     relative_to,
     summarize_markdown_file,
     unique,
     write_json,
-    write_text,
 )
-from lib.time_utils import format_duration, now_iso, parse_iso_datetime
-from lib.yaml_utils import parse_scalar, parse_simple_yaml
-
+from lib.lark import is_lark_doc_url, is_url, read_demand_source
+from lib.lock import acquire_workflow_lock, release_workflow_lock, workflow_lock_path
+from lib.notify import (
+    build_feishu_notification_payload,
+    feishu_config,
+    feishu_sign,
+    is_standard_workflow_notification,
+    notify_workflow_result,
+    workflow_duration_seconds,
+    workflow_notification_fingerprint,
+)
+from lib.openspec import (
+    collect_openspec_cli_context,
+    openspec_archive_root,
+    openspec_artifact_hashes,
+    openspec_bridge_context_path,
+    openspec_change_dir,
+    openspec_change_name,
+    openspec_cli_available,
+    openspec_hash_drift,
+    openspec_tasks_hash,
+    openspec_writeback_dir,
+    run_openspec_cli,
+    select_openspec_change,
+    validate_openspec_change_artifacts,
+    validate_openspec_change_name,
+    write_active_openspec_change,
+)
 from lib.project_detect import (
     code_root,
     detect_project,
-    find_candidate_codebases,
     infer_java_modules,
-    looks_like_project_root,
-    resolve_target_codebase,
     resolve_target_codebases,
     scan_java_files,
     summarize_detected_projects,
     todo_path,
 )
-from lib.state import (
-    RUN_COMMAND_TO_SL_COMMAND,
-    SL_COMMAND_TO_RUN_COMMAND,
-    SL_PHASE_ALLOWED_NEXT,
-    TODO_PHASE_ALLOWED_NEXT,
-    default_status,
-    ensure_status,
-    phase_after,
-    read_sl_state,
-    recover_sl_state_from_artifacts,
-    recover_todo_state_from_artifacts,
-    recover_workflow_state_from_artifacts,
-    update_sl_state,
-    validate_sl_state,
-    validate_standard_session,
-    write_sl_state,
-)
+from lib.references import existing_reference_files
 from lib.session import (
-    active_openspec_change_path,
     active_session_for_plan,
-    artifact_path,
-    artifacts_dir,
     create_session,
     current_session_file,
     current_session_is_stale,
     current_session_meta,
-    current_session_status,
     data_artifact_path,
     ensure_plan_can_run,
     ensure_runtime_dirs,
@@ -129,54 +66,47 @@ from lib.session import (
     planned_codebases,
     qa_dir,
     report_artifact_path,
-    session_data_dir,
-    session_report_dir,
-    sessions_dir,
-    sl_state_path,
-    todo_state_path,
     workflow_source,
-    workflow_state_path,
-    workspace_relative_path,
 )
-from lib.openspec import (
-    build_openspec_bridge_context,
-    collect_openspec_cli_context,
-    infer_openspec_service_hints,
-    is_openspec_placeholder_text,
-    openspec_archive_root,
-    openspec_artifact_hashes,
-    openspec_bridge_context_path,
-    openspec_change_dir,
-    openspec_change_name,
-    openspec_cli_available,
-    openspec_hash_drift,
-    openspec_reference_files,
-    openspec_root,
-    openspec_source_texts,
-    openspec_tasks_hash,
-    openspec_tasks_path,
-    openspec_writeback_dir,
-    run_openspec_cli,
-    select_openspec_change,
-    transform_openspec_tasks_to_todo,
-    validate_openspec_change_artifacts,
-    validate_openspec_change_name,
-    write_active_openspec_change,
+from lib.state import (
+    SL_COMMAND_TO_RUN_COMMAND,
+    ensure_status,
+    phase_after,
+    read_sl_state,
+    recover_sl_state_from_artifacts,
+    recover_workflow_state_from_artifacts,
+    update_sl_state,
+    validate_sl_state,
+    validate_standard_session,
 )
-from lib.notify import (
-    build_feishu_notification_payload,
-    build_workflow_notification,
-    feishu_config,
-    feishu_sign,
-    is_standard_workflow_notification,
-    notify_workflow_result,
-    notification_has_sent_route,
-    pushplus_config,
-    send_feishu_notification,
-    send_pushplus_notification,
-    workflow_duration_seconds,
-    workflow_notification_fingerprint,
+from lib.time_utils import format_duration, now_iso
+from lib.todo import (
+    constraint_items,
+    ensure_workflow_inputs,
+    extract_todo_keywords,
+    is_todo_template_placeholder,
+    parse_task_blocks,
+    parse_task_modules,
+    parse_todo_document,
+    service_hints,
+    summarize_todo,
+    todo_progress,
 )
+from lib.workspace import (
+    active_demand_path,
+    configured_demand_name,
+    demand_registry_dir,
+    demand_runtime_dir,
+    expand_workspace_variables,
+    load_workspace_config,
+    normalize_verify_commands,
+    resolve_requested_demand,
+    validate_demand_name,
+    workspace_config_path,
+    workspace_root,
+    write_active_demand,
+)
+from lib.yaml_utils import parse_simple_yaml
 
 
 def require_sl_state(config: dict[str, Any], run_command: str) -> None:
