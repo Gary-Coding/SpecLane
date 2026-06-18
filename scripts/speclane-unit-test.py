@@ -13,18 +13,25 @@ SCRIPT_DIR = REPO_ROOT / "skills" / "speclane" / "scripts"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from common import (  # noqa: E402
+    acquire_workflow_lock,
     active_session_for_plan,
     build_feishu_notification_payload,
     configured_demand_name,
+    ensure_workflow_inputs,
     create_session,
     current_session_file,
     data_artifact_path,
     detect_project,
     expand_workspace_variables,
     feishu_sign,
+    is_lark_doc_url,
+    is_url,
     load_workspace_config,
+    parse_todo_document,
+    release_workflow_lock,
     normalize_verify_commands,
     openspec_hash_drift,
+    todo_progress,
     validate_openspec_change_artifacts,
     read_json,
     resolve_requested_demand,
@@ -34,7 +41,9 @@ from common import (  # noqa: E402
     write_json,
     write_managed_json,
     workflow_notification_fingerprint,
+    workflow_lock_path,
 )
+from lib.lark import _extract_lark_cli_text, lark_cli_install_message  # noqa: E402
 from lib.io_utils import compact_text_excerpt, relative_to, unique  # noqa: E402
 from lib.time_utils import format_duration, parse_iso_datetime  # noqa: E402
 from lib.yaml_utils import parse_simple_yaml  # noqa: E402
@@ -47,6 +56,10 @@ def main() -> None:
     test_project_detection_and_resolution()
     test_notification_helpers()
     test_openspec_artifact_validation_and_state_guard()
+    test_lock_helpers()
+    test_lark_helpers()
+    test_workspace_validation_edges()
+    test_todo_helpers()
     test_io_and_time_helpers()
     print("unit_test=ok")
 
@@ -110,6 +123,32 @@ def test_workspace_variables_and_demand_selection() -> None:
                 raise AssertionError(f"invalid demand name accepted: {invalid}")
 
 
+def test_workspace_validation_edges() -> None:
+    with tempfile.TemporaryDirectory(prefix="sl-unit-workspace-edge-") as tmp:
+        root = Path(tmp)
+        duplicate = {"demands": [{"name": "1-demo"}, {"name": "1-demo"}]}
+        try:
+            resolve_requested_demand(root, duplicate, "1-demo")
+        except ValueError as exc:
+            assert "重复需求名称" in str(exc)
+        else:
+            raise AssertionError("duplicate demand names should fail")
+
+        active_config = {"demands": [{"name": "1-demo"}, {"name": "2-demo"}]}
+        active_file = root / ".speclane" / "active-demand.yml"
+        active_file.parent.mkdir(parents=True)
+        active_file.write_text("demand_name: 2-demo\n", encoding="utf-8")
+        assert resolve_requested_demand(root, active_config) == "2-demo"
+
+        assert normalize_verify_commands({"api": "go test ./...", "empty": ""}) == {"api": "go test ./..."}
+        try:
+            normalize_verify_commands(["npm test"])
+        except ValueError as exc:
+            assert "verify_commands" in str(exc)
+        else:
+            raise AssertionError("invalid verify_commands should fail")
+
+
 def test_workspace_config_and_session_reuse() -> None:
     with tempfile.TemporaryDirectory(prefix="sl-unit-workspace-") as tmp:
         root = Path(tmp)
@@ -157,6 +196,98 @@ def test_workspace_config_and_session_reuse() -> None:
         assert active_with_plan and active_with_plan["incomplete"] is False
         write_json(data_artifact_path(config, "status.json", session), {"phase": "done"})
         assert active_session_for_plan(config) is None
+
+
+def test_lock_helpers() -> None:
+    with tempfile.TemporaryDirectory(prefix="sl-unit-lock-") as tmp:
+        root = Path(tmp)
+        output = root / "output"
+        config = {"__workspace_root": str(root), "__demand_name": "1-demo", "output_dir": str(output), "workflow_source": "todo"}
+        lock = acquire_workflow_lock(config, "apply")
+        assert lock == workflow_lock_path(config)
+        assert lock.exists()
+        try:
+            acquire_workflow_lock(config, "apply", stale_seconds=1800)
+        except RuntimeError as exc:
+            assert "工作流正在执行" in str(exc)
+        else:
+            raise AssertionError("active lock should block")
+        release_workflow_lock(lock)
+        assert not lock.exists()
+
+        stale = workflow_lock_path(config)
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_text(
+            json.dumps({"pid": 99999999, "command": "apply", "created_at": "2000-01-01T00:00:00Z"}),
+            encoding="utf-8",
+        )
+        renewed = acquire_workflow_lock(config, "apply", stale_seconds=1)
+        assert renewed.exists()
+        release_workflow_lock(renewed)
+
+
+def test_lark_helpers() -> None:
+    assert is_url("https://example.com/a")
+    assert not is_url("/local/file.md")
+    assert is_lark_doc_url("https://example.feishu.cn/docx/ABC")
+    assert is_lark_doc_url("https://example.larksuite.com/wiki/ABC")
+    assert not is_lark_doc_url("https://example.com/docx/ABC")
+    assert _extract_lark_cli_text(json.dumps({"data": {"content": "# 需求"}})) == "# 需求"
+    assert _extract_lark_cli_text(json.dumps({"items": [{"text": "A"}, {"markdown": "B"}]})) == "A\n\nB"
+    assert "lark-cli" in lark_cli_install_message()
+
+
+def test_todo_helpers() -> None:
+    todo_text = "\n".join(
+        [
+            "# 限制条件",
+            "- 修改的服务是 item-core",
+            "",
+            "# 待办事项",
+            "## 接口",
+            "- [x] 完成已有任务",
+            "- [ ] 新增查询接口",
+            "1. 支持分页",
+            "- [ ] 新增导出接口",
+            "",
+        ]
+    )
+    parsed = parse_todo_document(todo_text)
+    assert parsed["constraints"] == ["修改的服务是 item-core"]
+    assert parsed["stats"]["pending_task_count"] == 2
+    assert parsed["stats"]["completed_task_count"] == 1
+    assert todo_progress(todo_text) == {"pending_task_count": 2, "completed_task_count": 1, "total_task_count": 3}
+
+    with tempfile.TemporaryDirectory(prefix="sl-unit-todo-input-") as tmp:
+        root = Path(tmp)
+        code = root / "code"
+        code.mkdir()
+        workspace = root / "workspace"
+        demand = workspace / "demands" / "1-demo" / "input"
+        demand.mkdir(parents=True)
+        (demand / "需求.md").write_text("# 需求\n", encoding="utf-8")
+        (workspace / "workspace.yml").write_text(
+            "\n".join(
+                [
+                    "version: 1",
+                    "workflow_source: todo",
+                    "mode: manual",
+                    "code_path: ../code",
+                    "demands:",
+                    "  - name: 1-demo",
+                    "    desc: demo",
+                    "    demand_file: demands/${demand_name}/input/需求.md",
+                    "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
+                    "    output_dir: demands/${demand_name}/rd/output",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        config = load_workspace_config(workspace)
+        result = ensure_workflow_inputs(config)
+        assert result["todo_created"] is True
+        assert result["todo_needs_edit"] is True
 
 
 def test_io_and_time_helpers() -> None:

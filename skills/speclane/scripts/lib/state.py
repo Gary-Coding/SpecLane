@@ -20,6 +20,22 @@ from .session import (
 from .time_utils import now_iso
 
 
+def phase_after(stage: str, mode: str) -> tuple[str, bool, str, str]:
+    if stage == "plan":
+        if mode == "manual":
+            return ("wait_confirm_plan", True, "implement", "等待确认后开始按计划修改代码。")
+        return ("plan", False, "", "继续进入实现阶段。")
+    if stage == "implement":
+        if mode == "manual":
+            return ("wait_confirm_implement", True, "review", "等待确认后执行代码审查。")
+        return ("implement", False, "", "继续进入代码审查阶段。")
+    if stage == "review":
+        if mode == "manual":
+            return ("wait_confirm_review", True, "verify", "等待确认后执行验证。")
+        return ("review", False, "", "继续进入验证阶段。")
+    return ("done", False, "", "工作流已完成。")
+
+
 def default_status(mode: str) -> dict[str, Any]:
     return {
         "mode": mode,
@@ -552,5 +568,4 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         "errors": errors,
         "state_path": str(sl_state_path(config)),
     }
-
 

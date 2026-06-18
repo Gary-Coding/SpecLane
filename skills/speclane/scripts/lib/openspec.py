@@ -8,7 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .io_utils import compact_text_excerpt, file_sha256, read_json, read_text, unique, write_json
+from .artifact_guard import write_managed_json
+from .io_utils import compact_text_excerpt, file_sha256, read_json, read_text, unique
 from .project_detect import code_root, find_candidate_codebases, looks_like_project_root
 from .session import active_openspec_change_path, artifacts_dir, workflow_source
 from .time_utils import now_iso
@@ -36,10 +37,6 @@ def _extract_service_hints_from_lines(lines: list[str]) -> list[str]:
                 if len(value) >= 2 and value.lower() not in stopwords:
                     hints.append(value)
     return unique(hints)
-
-
-def write_managed_json(config: dict[str, Any], path: Path, payload: Any) -> None:
-    write_json(path, payload)
 
 def openspec_tasks_hash(config: dict[str, Any]) -> str:
     if workflow_source(config) != "openspec":
@@ -508,5 +505,4 @@ def build_openspec_bridge_context(config: dict[str, Any], tasks_text: str) -> di
         "spec_merge_targets": spec_merge_targets,
         "updated_at": now_iso(),
     }
-
 

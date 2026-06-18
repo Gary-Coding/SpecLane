@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from .io_utils import read_json, write_json
-from .project_detect import code_root
 from .time_utils import now_iso
 
 
@@ -220,7 +219,7 @@ def planned_codebases(config: dict[str, Any], session_meta: dict[str, Any] | Non
     path = str(plan.get("resolved_code_path", "")).strip()
     if path:
         return [Path(path).resolve()]
-    return [code_root(config)]
+    return [Path(str(config["code_path"])).resolve()]
 
 
 def planned_codebase(config: dict[str, Any], session_meta: dict[str, Any] | None = None) -> Path:

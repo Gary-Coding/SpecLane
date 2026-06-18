@@ -21,6 +21,33 @@ def todo_path(config: dict[str, Any]) -> Path:
     return Path(str(config["todo_file"])).resolve()
 
 
+def scan_java_files(codebase: Path) -> list[str]:
+    results: list[str] = []
+    for pattern in ("src/main/java/**/*.java", "src/test/java/**/*.java"):
+        for path in sorted(codebase.glob(pattern)):
+            results.append(str(path.resolve()))
+    return results
+
+
+def infer_java_modules(paths: list[str]) -> list[str]:
+    modules: list[str] = []
+    for absolute_path in paths:
+        parts = Path(absolute_path).parts
+        if "java" not in parts:
+            continue
+        java_index = parts.index("java")
+        package_parts = list(parts[java_index + 1 : -1])
+        if not package_parts:
+            continue
+        if len(package_parts) >= 2:
+            module = f"{package_parts[-2]}-{package_parts[-1]}"
+        else:
+            module = package_parts[-1]
+        if module not in modules:
+            modules.append(module)
+    return modules
+
+
 def looks_like_project_root(path: Path) -> bool:
     return any(
         (
@@ -519,4 +546,3 @@ def summarize_detected_projects(projects: list[dict[str, str]]) -> dict[str, str
         "verify_command": summarize_field("verify_command"),
         "review_profile": summarize_field("review_profile"),
     }
-
