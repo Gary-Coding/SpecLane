@@ -563,6 +563,9 @@ def command_next(workspace: Path | None, timeout_seconds: int) -> None:
     if phase == "implement":
         command_finish_implement(workspace)
         return
+    if phase == "unit_test":
+        run_python("rd-self-check.py", scoped_workspace_args(workspace))
+        return
     if phase == "self_check":
         command_review(workspace)
         return
@@ -695,12 +698,15 @@ def command_finish_implement(workspace: Path | None) -> None:
     config = load_workspace_config(workspace)
     require_sl_state(config, "finish-implement")
     args = scoped_workspace_args(workspace)
+    run_python("rd-unit-test.py", args)
     run_python("rd-self-check.py", args)
     update_sl_state(
         config,
         phase="self_checked",
         lasl_command="/sl:apply",
         artifacts={
+            "unit_test_json": str(data_artifact_path(config, "unit-test.json")),
+            "unit_test_md": str(report_artifact_path(config, "unit-test.md")),
             "self_check_json": str(data_artifact_path(config, "self-check.json")),
             "self_check_md": str(report_artifact_path(config, "self-check.md")),
         },
@@ -711,8 +717,8 @@ def command_finish_implement(workspace: Path | None) -> None:
             current_task="实现阶段已完成。",
             next_action="等待确认后执行代码审查。",
             phase="wait_confirm_implement",
-            progress=60,
-            completed_task="已完成代码实现",
+            progress=68,
+            completed_task="已完成代码实现和单元测试",
         )
         return
 
@@ -721,8 +727,8 @@ def command_finish_implement(workspace: Path | None) -> None:
         current_task="实现阶段已完成。",
         next_action="继续执行代码审查和验证。",
         phase="review",
-        progress=60,
-        completed_task="已完成代码实现",
+        progress=68,
+        completed_task="已完成代码实现和单元测试",
     )
     command_review(workspace)
     command_verify(workspace, 300)
@@ -821,7 +827,7 @@ def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="speclane 统一工作流入口。")
-    parser.add_argument("command", choices=["route-sl", "route-check", "init", "openspec-propose", "openspec-bridge", "openspec-writeback", "openspec-archive-check", "openspec-archive", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "qa-plan", "qa-report", "status", "recover", "next", "validate-state", "assert-standard-session"])
+    parser.add_argument("command", choices=["route-sl", "route-check", "init", "openspec-propose", "openspec-bridge", "openspec-writeback", "openspec-archive-check", "openspec-archive", "discover", "plan", "apply", "start-implement", "finish-implement", "unit-test", "self-check", "review", "verify", "qa-plan", "qa-report", "status", "recover", "next", "validate-state", "assert-standard-session"])
     parser.add_argument("change_name", nargs="?", help="配合 openspec-propose 或 validate-state 使用。")
     parser.add_argument("--command-text", help="配合 route-sl 使用，传入完整 /sl:* 命令文本。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
@@ -864,6 +870,8 @@ def main() -> None:
         command_start_implement(workspace)
     elif args.command == "finish-implement":
         command_finish_implement(workspace)
+    elif args.command == "unit-test":
+        run_python("rd-unit-test.py", scoped_workspace_args(workspace))
     elif args.command == "self-check":
         run_python("rd-self-check.py", scoped_workspace_args(workspace))
     elif args.command == "review":

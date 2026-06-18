@@ -98,7 +98,7 @@ RD 阶段需要更细规则时，按需读取：
 ## 硬约束
 
 - 禁止编辑 `<workspace>/workspace.yml`，它是用户维护的契约。
-- 禁止手工创建、编辑或伪造 `.speclane/current-session.json`、`.speclane/sl-state.json`、`.speclane/sessions/**/status.json`、`plan.json`、`review.json`、`verify.json`、`notification.json` 或标准 output 报告。
+- 禁止手工创建、编辑或伪造 `.speclane/current-session.json`、`.speclane/sl-state.json`、`.speclane/sessions/**/status.json`、`plan.json`、`unit-test.json`、`review.json`、`verify.json`、`notification.json` 或标准 output 报告。
 - 标准 JSON 和 Markdown 产物必须由工作流脚本生成。
 - 一次只执行用户当前明确请求的一个 `/sl:*` 命令，下一步命令只能作为文字建议。
 - 多需求模式下，每个需求的状态和 session 隔离在 `.speclane/demands/<demand_name>/`；AI 禁止跨需求复用 session。

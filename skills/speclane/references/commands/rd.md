@@ -29,6 +29,7 @@ python3 scripts/run-workflow.py route-sl --command-text "<command>"
 ## 边界
 
 - `/sl:propose` 和 `/sl:bridge` 不改代码。
-- `/sl:apply` 才进入代码实现。
+- `/sl:apply` 才进入代码实现，并要求补充单元测试。
+- `finish-implement` 会先执行单元测试并生成 `unit-test.json/md`，再进入 self-check。
 - 标准 JSON 和 Markdown 报告只能由脚本生成。
 - 验证和通知只能通过 verify 链路收口。

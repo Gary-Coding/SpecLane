@@ -599,13 +599,19 @@ def test_todo_auto_session_and_verify_compaction(root: Path) -> None:
     run([sys.executable, str(RUN_WORKFLOW), "finish-implement", "--workspace", str(workspace)])
     session = read_json(workspace / ".speclane" / "demands" / "9-demo" / "current-session.json")
     data_dir = Path(session["data_dir"])
+    report_dir = Path(session["report_dir"])
     plan_summary = read_json(data_dir / "plan-summary.json")
+    unit_test = read_json(data_dir / "unit-test.json")
     verify = read_json(data_dir / "verify.json")
     status = read_json(data_dir / "status.json")
     notification = read_json(data_dir / "notification.json")
 
     if not plan_summary.get("target_codebases"):
         raise AssertionError("plan-summary.json missing target_codebases")
+    if unit_test.get("result") != "通过":
+        raise AssertionError("unit-test did not pass")
+    if not (report_dir / "unit-test.md").exists():
+        raise AssertionError("unit-test.md was not generated")
     if verify.get("result") != "通过":
         raise AssertionError("verify did not pass")
     stdout = verify["sections"][0]["stdout"]

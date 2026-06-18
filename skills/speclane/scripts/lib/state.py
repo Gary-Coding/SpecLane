@@ -101,6 +101,7 @@ SL_PHASE_ALLOWED_NEXT: dict[str, list[str]] = {
     "bridged": ["/sl:apply", "/sl:plan"],
     "planned": ["/sl:apply"],
     "implementing": [],
+    "unit_tested": ["/sl:review"],
     "self_checked": ["/sl:review"],
     "reviewed": ["/sl:verify", "/sl:apply"],
     "verified": ["/sl:archive-check"],
@@ -113,6 +114,7 @@ TODO_PHASE_ALLOWED_NEXT: dict[str, list[str]] = {
     "draft": ["/sl:init", "/sl:plan", "/sl:apply"],
     "planned": ["/sl:apply"],
     "implementing": [],
+    "unit_tested": ["/sl:review"],
     "self_checked": ["/sl:review"],
     "reviewed": ["/sl:verify", "/sl:apply"],
     "done": [],
@@ -128,6 +130,7 @@ RUN_COMMAND_TO_SL_COMMAND: dict[str, str] = {
     "apply": "/sl:apply",
     "start-implement": "/sl:apply",
     "finish-implement": "/sl:apply",
+    "unit-test": "/sl:apply",
     "review": "/sl:review",
     "verify": "/sl:verify",
     "openspec-archive-check": "/sl:archive-check",
@@ -236,6 +239,7 @@ def _status_phase_for_todo(config: dict[str, Any]) -> tuple[str, dict[str, Any],
         "plan": "planned",
         "wait_confirm_plan": "planned",
         "implement": "implementing",
+        "unit_test": "unit_tested",
         "self_check": "self_checked",
         "wait_confirm_implement": "self_checked",
         "review": "reviewed",
@@ -273,6 +277,7 @@ def validate_standard_session(config: dict[str, Any], require_notification: bool
         errors.append("plan.json 不是标准脚本生成的产物。")
 
     optional_sources = {
+        "unit-test.json": "run-workflow.py unit-test",
         "self-check.json": "run-workflow.py self-check",
         "review.json": "run-workflow.py review",
         "verify.json": "run-workflow.py verify",
@@ -354,6 +359,7 @@ def recover_sl_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
     try:
         session_meta = current_session_meta(config)
         plan_path = data_artifact_path(config, "plan.json", session_meta)
+        unit_test_path = data_artifact_path(config, "unit-test.json", session_meta)
         self_check_path = data_artifact_path(config, "self-check.json", session_meta)
         review_path = data_artifact_path(config, "review.json", session_meta)
         verify_path = data_artifact_path(config, "verify.json", session_meta)
@@ -363,6 +369,11 @@ def recover_sl_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
             artifacts["plan_md"] = str(report_artifact_path(config, "plan.md", session_meta))
             phase = "planned"
             lasl_command = "/sl:plan"
+        if unit_test_path.exists():
+            artifacts["unit_test_json"] = str(unit_test_path)
+            artifacts["unit_test_md"] = str(report_artifact_path(config, "unit-test.md", session_meta))
+            phase = "unit_tested"
+            lasl_command = "/sl:apply"
         if self_check_path.exists():
             artifacts["self_check_json"] = str(self_check_path)
             artifacts["self_check_md"] = str(report_artifact_path(config, "self-check.md", session_meta))
@@ -411,6 +422,7 @@ def recover_todo_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
     if session_meta:
         artifact_names = {
             "plan_json": "plan.json",
+            "unit_test_json": "unit-test.json",
             "self_check_json": "self-check.json",
             "review_json": "review.json",
             "verify_json": "verify.json",
@@ -418,6 +430,7 @@ def recover_todo_state_from_artifacts(config: dict[str, Any]) -> dict[str, Any]:
         }
         report_names = {
             "plan_md": "plan.md",
+            "unit_test_md": "unit-test.md",
             "self_check_md": "self-check.md",
             "review_md": "review.md",
             "verify_md": "verify.md",
@@ -470,7 +483,7 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         elif run_command in ("plan", "apply"):
             if not todo_path(config).exists():
                 errors.append("缺少 todo_file，请先执行 /sl:init 或补充 todo.md。")
-            if run_command == "plan" and phase in ("implementing", "self_checked", "reviewed"):
+            if run_command == "plan" and phase in ("implementing", "unit_tested", "self_checked", "reviewed"):
                 errors.append("当前已有活跃 session 正在交付中，不能重新执行 /sl:plan。请继续当前 /sl:apply、/sl:review 或 /sl:verify。")
         elif run_command == "start-implement":
             if phase not in ("planned", "implementing", "blocked"):
@@ -478,6 +491,9 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         elif run_command == "finish-implement":
             if phase != "implementing":
                 errors.append("当前状态不允许完成实现，必须先通过 /sl:apply 进入 implementing。")
+        elif run_command == "unit-test":
+            if phase != "implementing":
+                errors.append("当前状态不允许执行单元测试，必须先通过 /sl:apply 进入 implementing。")
         elif run_command == "review":
             if phase not in ("self_checked", "reviewed", "blocked"):
                 errors.append("当前状态不允许 review，请先完成实现和自查。")
@@ -527,7 +543,7 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
     elif sl_command == "/sl:plan":
         if phase not in ("bridged", "planned", "blocked") and sl_command not in allowed_next:
             errors.append("当前状态不允许重新计划，请先完成 /sl:bridge，或继续当前活跃交付会话。")
-        if phase in ("implementing", "self_checked", "reviewed", "verified"):
+        if phase in ("implementing", "unit_tested", "self_checked", "reviewed", "verified"):
             errors.append("当前已有活跃 session 正在交付中，不能重新执行 /sl:plan。请继续当前 /sl:apply、/sl:review 或 /sl:verify。")
         if phase == "proposed":
             errors.append("/sl:propose 后不能直接进入交付，必须先执行 /sl:bridge。")
@@ -568,4 +584,3 @@ def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any
         "errors": errors,
         "state_path": str(sl_state_path(config)),
     }
-

@@ -62,6 +62,22 @@ def check_required_modules() -> None:
         fail("缺少必需 lib 模块：" + ", ".join(missing))
 
 
+def check_required_scripts() -> None:
+    required = {
+        "run-workflow.py",
+        "rd-discover.py",
+        "rd-plan.py",
+        "rd-unit-test.py",
+        "rd-self-check.py",
+        "rd-review.py",
+        "rd-verify.py",
+    }
+    existing = {path.name for path in SCRIPT_DIR.glob("*.py")}
+    missing = sorted(required - existing)
+    if missing:
+        fail("缺少必需工作流脚本：" + ", ".join(missing))
+
+
 def check_common_size() -> None:
     line_count = len(COMMON.read_text(encoding="utf-8").splitlines())
     if line_count > 260:
@@ -131,6 +147,7 @@ def main() -> None:
     if not COMMON.exists():
         fail("缺少 common.py 兼容导出层。")
     check_required_modules()
+    check_required_scripts()
     check_common_size()
     check_no_reverse_common_import()
     check_dependency_direction()
