@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import hmac
 import json
 import os
@@ -18,9 +17,20 @@ from urllib import error as urllib_error
 from urllib.parse import urlparse
 from urllib import request as urllib_request
 
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from lib.io_utils import (
+    compact_text_excerpt,
+    file_sha256,
+    markdown_headings,
+    read_json,
+    read_text,
+    relative_to,
+    summarize_markdown_file,
+    unique,
+    write_json,
+    write_text,
+)
+from lib.time_utils import format_duration, now_iso, parse_iso_datetime
+from lib.yaml_utils import parse_scalar, parse_simple_yaml
 
 
 def workflow_lock_path(config: dict[str, Any]) -> Path:
@@ -76,161 +86,6 @@ def release_workflow_lock(path: Path | None) -> None:
         path.unlink()
     except FileNotFoundError:
         pass
-
-
-def parse_iso_datetime(value: str) -> datetime | None:
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    if normalized.endswith("Z"):
-        normalized = normalized[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def format_duration(seconds: float) -> str:
-    safe_seconds = max(0.0, float(seconds))
-    if safe_seconds < 60:
-        return f"{safe_seconds:.2f} 秒"
-    total_seconds = int(round(safe_seconds))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, secs = divmod(remainder, 60)
-    parts: list[str] = []
-    if hours:
-        parts.append(f"{hours} 小时")
-    if minutes:
-        parts.append(f"{minutes} 分")
-    if secs or not parts:
-        parts.append(f"{secs} 秒")
-    return "".join(parts)
-
-
-def parse_scalar(value: str) -> Any:
-    stripped = value.strip()
-    if stripped in ("", "null", "~"):
-        return ""
-    if stripped == "[]":
-        return []
-    if stripped.startswith("[") and stripped.endswith("]"):
-        inner = stripped[1:-1].strip()
-        if not inner:
-            return []
-        parts: list[str] = []
-        current = ""
-        quote = ""
-        for char in inner:
-            if char in ("'", '"'):
-                if not quote:
-                    quote = char
-                elif quote == char:
-                    quote = ""
-                current += char
-                continue
-            if char == "," and not quote:
-                parts.append(current.strip())
-                current = ""
-                continue
-            current += char
-        if current.strip():
-            parts.append(current.strip())
-        return [parse_scalar(part) for part in parts]
-    if stripped == "true":
-        return True
-    if stripped == "false":
-        return False
-    if re.fullmatch(r"-?\d+", stripped):
-        return int(stripped)
-    if (stripped.startswith('"') and stripped.endswith('"')) or (
-        stripped.startswith("'") and stripped.endswith("'")
-    ):
-        return stripped[1:-1]
-    return stripped
-
-
-def _tokenize_yaml(text: str) -> list[tuple[int, str]]:
-    tokens: list[tuple[int, str]] = []
-    for raw_line in text.splitlines():
-        if not raw_line.strip():
-            continue
-        if raw_line.lstrip().startswith("#"):
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip(" "))
-        tokens.append((indent, raw_line.strip()))
-    return tokens
-
-
-def _parse_yaml_block(tokens: list[tuple[int, str]], index: int, indent: int) -> tuple[int, Any]:
-    container: Any = None
-
-    while index < len(tokens):
-        current_indent, content = tokens[index]
-        if current_indent < indent:
-            break
-        if current_indent > indent:
-            raise ValueError(f"YAML 缩进不合法：{content}")
-
-        if content.startswith("- "):
-            if container is None:
-                container = []
-            if not isinstance(container, list):
-                raise ValueError("YAML 不能在同一层混用对象和数组。")
-            value_part = content[2:].strip()
-            if value_part:
-                if ":" in value_part and not value_part.startswith(("'", '"')):
-                    key, _, value = value_part.partition(":")
-                    item: dict[str, Any] = {key.strip(): parse_scalar(value.strip())}
-                    next_index = index + 1
-                    if next_index < len(tokens) and tokens[next_index][0] > indent:
-                        next_index, nested = _parse_yaml_block(tokens, next_index, indent + 2)
-                        if isinstance(nested, dict):
-                            item.update(nested)
-                        else:
-                            raise ValueError("YAML 数组对象后续缩进必须是对象。")
-                    container.append(item)
-                    index = next_index
-                    continue
-                container.append(parse_scalar(value_part))
-                index += 1
-                continue
-            index, nested = _parse_yaml_block(tokens, index + 1, indent + 2)
-            container.append(nested)
-            continue
-
-        if container is None:
-            container = {}
-        if not isinstance(container, dict):
-            raise ValueError("YAML 不能在同一层混用数组和对象。")
-
-        key, sep, value_part = content.partition(":")
-        if not sep:
-            raise ValueError(f"YAML 行缺少冒号：{content}")
-        key = key.strip()
-        value_part = value_part.strip()
-        if value_part:
-            container[key] = parse_scalar(value_part)
-            index += 1
-            continue
-        index, nested = _parse_yaml_block(tokens, index + 1, indent + 2)
-        container[key] = nested
-
-    if container is None:
-        return index, {}
-    return index, container
-
-
-def parse_simple_yaml(text: str) -> dict[str, Any]:
-    tokens = _tokenize_yaml(text)
-    if not tokens:
-        return {}
-    _, parsed = _parse_yaml_block(tokens, 0, tokens[0][0])
-    if not isinstance(parsed, dict):
-        raise ValueError("工作空间配置必须是对象结构。")
-    return parsed
 
 
 def _stringify_workspace_vars(raw_vars: Any) -> dict[str, str]:
@@ -833,6 +688,14 @@ def output_dir(config: dict[str, Any]) -> Path:
     return Path(str(config["output_dir"])).resolve()
 
 
+def qa_dir(config: dict[str, Any]) -> Path:
+    root = Path(str(config["__workspace_root"])).resolve()
+    demand_name = str(config.get("__demand_name", "")).strip()
+    if demand_name:
+        return root / "demands" / demand_name / "qa"
+    return root / "qa"
+
+
 def session_data_dir(config: dict[str, Any], session_id: str) -> Path:
     return sessions_dir(config) / session_id
 
@@ -995,6 +858,8 @@ RUN_COMMAND_TO_SL_COMMAND: dict[str, str] = {
     "verify": "/sl:verify",
     "openspec-archive-check": "/sl:archive-check",
     "openspec-archive": "/sl:archive",
+    "qa-plan": "/sl:qa:plan",
+    "qa-report": "/sl:qa:report",
 }
 
 
@@ -1011,6 +876,8 @@ SL_COMMAND_TO_RUN_COMMAND: dict[str, str] = {
     "/sl:status": "status",
     "/sl:recover": "recover",
     "/sl:demand": "demand",
+    "/sl:qa:plan": "qa-plan",
+    "/sl:qa:report": "qa-report",
 }
 
 
@@ -1462,6 +1329,14 @@ def recover_workflow_state_from_artifacts(config: dict[str, Any]) -> dict[str, A
 
 
 def validate_sl_state(config: dict[str, Any], run_command: str) -> dict[str, Any]:
+    if run_command in ("qa-plan", "qa-report"):
+        state = recover_workflow_state_from_artifacts(config)
+        return {
+            "valid": True,
+            "phase": state.get("phase", ""),
+            "allowed_next": state.get("allowed_next", []),
+            "warnings": ["QA 命令为旁路阶段，不改变 RD 状态机。"],
+        }
     if workflow_source(config) != "openspec":
         sl_command = RUN_COMMAND_TO_SL_COMMAND.get(run_command, "")
         phase, status, session_meta = _status_phase_for_todo(config)
@@ -1583,7 +1458,7 @@ def require_sl_state(config: dict[str, Any], run_command: str) -> None:
 
 def parse_sl_command(text: str) -> dict[str, Any]:
     stripped = str(text).strip()
-    match = re.match(r"^(/sl:[a-z][a-z-]*)(?:\s+([A-Za-z0-9][A-Za-z0-9-]*))?(?:\s|$)", stripped)
+    match = re.match(r"^(/sl:[a-z][a-z-]*(?::[a-z][a-z-]*)?)(?:\s+([A-Za-z0-9][A-Za-z0-9-]*))?(?:\s|$)", stripped)
     if not match:
         raise ValueError("未识别到 /sl:* 命令。")
     sl_command = match.group(1)
@@ -1605,8 +1480,9 @@ def assert_managed_artifact(path: Path, config: dict[str, Any]) -> Path:
     resolved = path.resolve()
     data_root = artifacts_dir(config).resolve()
     output_root = output_dir(config).resolve()
+    qa_root = qa_dir(config).resolve()
     writeback = openspec_writeback_dir(config).resolve() if workflow_source(config) == "openspec" else None
-    allowed_roots = [data_root, output_root]
+    allowed_roots = [data_root, output_root, qa_root]
     if writeback:
         allowed_roots.append(writeback)
         allowed_roots.append(openspec_archive_root(config).resolve())
@@ -1615,75 +1491,18 @@ def assert_managed_artifact(path: Path, config: dict[str, Any]) -> Path:
     return resolved
 
 
+def write_managed_json(config: dict[str, Any], path: Path, payload: Any) -> None:
+    write_json(assert_managed_artifact(path, config), payload)
+
+
+def write_managed_text(config: dict[str, Any], path: Path, content: str) -> None:
+    write_text(assert_managed_artifact(path, config), content)
+
+
 def ensure_runtime_dirs(config: dict[str, Any]) -> None:
     artifacts_dir(config).mkdir(parents=True, exist_ok=True)
     sessions_dir(config).mkdir(parents=True, exist_ok=True)
     output_dir(config).mkdir(parents=True, exist_ok=True)
-
-
-def read_text(path: Path) -> str:
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
-
-
-def file_sha256(path: Path) -> str:
-    if not path.exists() or not path.is_file():
-        return ""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def markdown_headings(text: str, limit: int = 16) -> list[str]:
-    headings: list[str] = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            headings.append(stripped[:160])
-        if len(headings) >= limit:
-            break
-    return headings
-
-
-def compact_text_excerpt(text: str, keywords: list[str] | None = None, max_chars: int = 6000) -> str:
-    normalized = text.strip()
-    if len(normalized) <= max_chars:
-        return normalized
-
-    keywords = [item.lower() for item in (keywords or []) if item]
-    lines = normalized.splitlines()
-    selected: list[str] = []
-    selected.extend(lines[:60])
-    for index, line in enumerate(lines):
-        lowered = line.lower()
-        if keywords and not any(keyword in lowered for keyword in keywords):
-            continue
-        start = max(0, index - 2)
-        end = min(len(lines), index + 3)
-        selected.append("")
-        selected.extend(lines[start:end])
-        if len("\n".join(selected)) >= max_chars:
-            break
-    excerpt = "\n".join(selected).strip()
-    if len(excerpt) > max_chars:
-        excerpt = excerpt[:max_chars].rstrip()
-    return excerpt + "\n\n...[已摘要，按需读取原文件全文]..."
-
-
-def summarize_markdown_file(path: Path, keywords: list[str] | None = None, max_excerpt_chars: int = 6000) -> dict[str, Any]:
-    text = read_text(path)
-    return {
-        "path": str(path.resolve()),
-        "bytes": path.stat().st_size if path.exists() else 0,
-        "sha256": file_sha256(path),
-        "headings": markdown_headings(text),
-        "excerpt": compact_text_excerpt(text, keywords=keywords, max_chars=max_excerpt_chars),
-        "truncated": len(text.strip()) > max_excerpt_chars,
-    }
-
-
-def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
 
 
 def todo_template() -> str:
@@ -2247,43 +2066,6 @@ def is_todo_template_placeholder(todo_text: str) -> bool:
     return any(marker in normalized for marker in markers)
 
 
-def read_json(path: Path, fallback: Any) -> Any:
-    if not path.exists():
-        return fallback
-    try:
-        text = path.read_text(encoding="utf-8").strip()
-        if not text:
-            return fallback
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return fallback
-
-
-def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp_path.replace(path)
-
-
-def write_managed_json(config: dict[str, Any], path: Path, payload: Any) -> None:
-    write_json(assert_managed_artifact(path, config), payload)
-
-
-def write_managed_text(config: dict[str, Any], path: Path, content: str) -> None:
-    write_text(assert_managed_artifact(path, config), content)
-
-
-def unique(items: list[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for item in items:
-        if item and item not in seen:
-            seen.add(item)
-            ordered.append(item)
-    return ordered
-
-
 def normalize_todo_text_item(text: str) -> str:
     normalized = text.strip()
     normalized = re.sub(r"^\d+\.\s*", "", normalized)
@@ -2605,14 +2387,6 @@ def extract_todo_keywords(todo_text: str, limit: int = 24) -> list[str]:
                 continue
             keywords.append(normalized)
     return unique(keywords)[:limit]
-
-
-def relative_to(path: str | Path, root: Path) -> str:
-    candidate = Path(str(path)).resolve()
-    try:
-        return str(candidate.relative_to(root.resolve()))
-    except ValueError:
-        return str(candidate)
 
 
 def existing_reference_files(config: dict[str, Any]) -> list[str]:

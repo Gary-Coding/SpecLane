@@ -54,6 +54,8 @@
 | `/sl:demand use <name>` | 切换 active demand | 后续命令可省略 `--demand` |
 | `/sl:demand list` | 查看工作区所有需求实例 | 按需切换或查看状态 |
 | `/sl:demand status <name>` | 查看指定需求状态 | 按 allowed_next 继续 |
+| `/sl:qa:plan` | 基于 RD 输出生成测试计划 | 测试人员审核并补充测试用例 |
+| `/sl:qa:report` | 生成测试报告草稿 | 测试人员补充真实执行结果 |
 
 多需求模式下，主流程命令可以追加 demand 参数：
 
@@ -96,5 +98,6 @@ todo 模式：
 - 归档前必须先 `/sl:archive-check`。
 - 状态异常、中断恢复、产物不一致时，先执行 `/sl:recover`，不要猜测下一步。
 - 多需求模式下，每个需求状态位于 `.speclane/demands/<demand-name>/`，AI 禁止跨需求复用 session。
+- `/sl:qa:*` 是 QA 旁路命令，只写入 `demands/<demand-name>/qa/`，不改变 RD 状态机。
 
-AI 内部执行协议以 `skills/speclane/references/commands/` 下的命令分片为准；脚本统一来自 `skills/speclane/scripts/`。
+AI 内部执行协议以 `skills/speclane/references/commands/` 下的命令分片为准；脚本统一来自 `skills/speclane/scripts/`。对普通用户稳定的是 `speclane` CLI 和 `/sl:*` 命令，内部 Python 脚本命令不作为兼容 API 承诺。

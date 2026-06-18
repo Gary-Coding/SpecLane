@@ -268,6 +268,10 @@ def command_route_st(workspace: Path | None, command_text: str | None, timeout_s
             command_prepare_archive_openspec(workspace)
         elif sl_command == "/sl:archive":
             command_archive_openspec(workspace)
+        elif sl_command == "/sl:qa:plan":
+            command_qa_plan(workspace)
+        elif sl_command == "/sl:qa:report":
+            command_qa_report(workspace)
         elif sl_command == "/sl:status":
             command_status(workspace)
         elif sl_command == "/sl:recover":
@@ -781,6 +785,16 @@ def command_verify(workspace: Path | None, timeout_seconds: int, force: bool = F
         run_python("openspec-writeback.py", scoped_workspace_args(workspace))
 
 
+def command_qa_plan(workspace: Path | None) -> None:
+    args = scoped_workspace_args(workspace)
+    run_python("qa-plan.py", args)
+
+
+def command_qa_report(workspace: Path | None) -> None:
+    args = scoped_workspace_args(workspace)
+    run_python("qa-report.py", args)
+
+
 def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
     config = load_workspace_config(workspace)
     require_sl_state(config, "apply")
@@ -807,7 +821,7 @@ def command_apply(workspace: Path | None, timeout_seconds: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="speclane 统一工作流入口。")
-    parser.add_argument("command", choices=["route-sl", "route-check", "init", "openspec-propose", "openspec-bridge", "openspec-writeback", "openspec-archive-check", "openspec-archive", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "status", "recover", "next", "validate-state", "assert-standard-session"])
+    parser.add_argument("command", choices=["route-sl", "route-check", "init", "openspec-propose", "openspec-bridge", "openspec-writeback", "openspec-archive-check", "openspec-archive", "discover", "plan", "apply", "start-implement", "finish-implement", "self-check", "review", "verify", "qa-plan", "qa-report", "status", "recover", "next", "validate-state", "assert-standard-session"])
     parser.add_argument("change_name", nargs="?", help="配合 openspec-propose 或 validate-state 使用。")
     parser.add_argument("--command-text", help="配合 route-sl 使用，传入完整 /sl:* 命令文本。")
     parser.add_argument("--workspace", help="工作空间路径，默认读取当前目录")
@@ -856,6 +870,10 @@ def main() -> None:
         command_review(workspace)
     elif args.command == "verify":
         command_verify(workspace, args.timeout_seconds, args.force)
+    elif args.command == "qa-plan":
+        command_qa_plan(workspace)
+    elif args.command == "qa-report":
+        command_qa_report(workspace)
     elif args.command == "status":
         command_status(workspace)
     elif args.command == "recover":

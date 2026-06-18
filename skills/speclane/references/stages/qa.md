@@ -4,7 +4,7 @@ QA 阶段面向测试设计、测试执行、缺陷回归和验收结论。
 
 ## 当前状态
 
-当前阶段为协议预留，默认不执行脚本，不修改代码。
+当前阶段为最小可用版本，支持生成测试计划和测试报告草稿，不修改代码，不改变 RD 状态机。
 
 ## 输入
 
@@ -23,8 +23,10 @@ demands/<demand-name>/qa/
 可包含：
 
 - `test-plan.md`
+- `test-plan.json`
 - `test-cases.md`
 - `test-report.md`
+- `test-report.json`
 - `defects.md`
 - `regression.md`
 

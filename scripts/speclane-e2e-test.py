@@ -13,6 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUN_WORKFLOW = REPO_ROOT / "skills" / "speclane" / "scripts" / "run-workflow.py"
 CLI = REPO_ROOT / "bin" / "speclane.js"
+FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 
 
 def ensure_demand_dirs(workspace: Path, demand_name: str) -> Path:
@@ -141,51 +142,9 @@ def test_templates_cli(root: Path) -> None:
 
 def test_openspec_state_and_bridge(root: Path) -> None:
     workspace = root / "openspec-workspace"
-    code = root / "code" / "demo-service"
-    demand_dir = ensure_demand_dirs(workspace, "8-demo")
-    code.mkdir(parents=True)
-    (code / "package.json").write_text(
-        json.dumps(
-            {
-                "name": "demo-service",
-                "version": "1.0.0",
-                "scripts": {"test": "node -e \"process.exit(0)\""},
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    (workspace / "docs").mkdir(parents=True)
-    (demand_dir / "input" / "需求.md").write_text(
-        "# 需求\n\n为 demo-service 增加状态查询接口。\n\n## 验收\n\n- 查询接口返回 ok。\n",
-        encoding="utf-8",
-    )
-    (workspace / "workspace.yml").write_text(
-        "\n".join(
-            [
-                "version: 1",
-                "mode: auto",
-                "workflow_source: openspec",
-                "reference_files: []",
-                "code_path: ../code/demo-service",
-                "openspec:",
-                "  changes_dir: demands/${demand_name}/spec/openspec/changes",
-                "demands:",
-                "  - name: 8-demo",
-                "    desc: 状态查询接口",
-                "    workflow_source: openspec",
-                "    mode: auto",
-                "    demand_file: demands/${demand_name}/input/需求.md",
-                "    todo_file: demands/${demand_name}/spec/bridge/todo.md",
-                "    output_dir: demands/${demand_name}/rd/output",
-                "    reference_files: []",
-                "    code_path: ../code/demo-service",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    code_root = root / "code"
+    shutil.copytree(FIXTURES_DIR / "rd-basic-workspace", workspace)
+    shutil.copytree(FIXTURES_DIR / "rd-basic-code", code_root)
 
     invalid = run(
         [
@@ -659,6 +618,34 @@ def test_todo_auto_session_and_verify_compaction(root: Path) -> None:
         raise AssertionError("todo auto session did not finish with done status")
     if notification.get("status") != "skipped":
         raise AssertionError("notification should be marked skipped when no provider is configured")
+
+    qa_plan = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:qa:plan",
+        ]
+    )
+    qa_report = run(
+        [
+            sys.executable,
+            str(RUN_WORKFLOW),
+            "route-sl",
+            "--workspace",
+            str(workspace),
+            "--command-text",
+            "/sl:qa:report",
+        ]
+    )
+    qa_dir = workspace / "demands" / "9-demo" / "qa"
+    if "qa_plan=" not in qa_plan or not (qa_dir / "test-plan.md").exists() or not (qa_dir / "test-plan.json").exists():
+        raise AssertionError("/sl:qa:plan should generate QA test plan artifacts")
+    if "qa_report=" not in qa_report or not (qa_dir / "test-report.md").exists() or not (qa_dir / "test-report.json").exists():
+        raise AssertionError("/sl:qa:report should generate QA report artifacts")
 
 
 def test_incomplete_plan_session_is_reused(root: Path) -> None:
