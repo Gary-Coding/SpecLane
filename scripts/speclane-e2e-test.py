@@ -453,6 +453,20 @@ def test_multi_demand_state_isolation(root: Path) -> None:
         )
         if f"demand_name={demand}" not in out:
             raise AssertionError("/sl:demand new should create demand instance")
+        expected_paths = [
+            workspace / "demands" / demand / "input" / "需求.md",
+            workspace / "demands" / demand / "input" / "references",
+            workspace / "demands" / demand / "spec" / "openspec" / "changes",
+            workspace / "demands" / demand / "spec" / "openspec" / "specs",
+            workspace / "demands" / demand / "spec" / "bridge" / "todo.md",
+            workspace / "demands" / demand / "rd" / "output",
+            workspace / "demands" / demand / "qa",
+            workspace / "demands" / demand / "archive",
+            workspace / ".speclane" / "demands" / demand,
+        ]
+        for expected_path in expected_paths:
+            if not expected_path.exists():
+                raise AssertionError(f"/sl:demand new should initialize {expected_path}")
         todo = workspace / "demands" / demand / "spec" / "bridge" / "todo.md"
         todo.write_text(
             "# 限制条件\n"
